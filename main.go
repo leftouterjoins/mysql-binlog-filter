@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	conn, err := sql.Open("mysql-binlog", "{\"host\": \"127.0.0.1\", \"port\": 3306, \"user\": \"root\", \"password\": \"root\"}")
+	conn, err := sql.Open("mysql-binlog", "{\"host\": \"127.0.0.1\", \"port\": 3306, \"user\": \"root\", \"password\": \"root\", \"database\": \"test\", \"ssl\": false}")
 	if err != nil {
 		fmt.Printf("Open Error: %+v\n", err)
 	}

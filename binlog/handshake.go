@@ -1,5 +1,10 @@
 package binlog
 
+import (
+	"bytes"
+	"encoding/binary"
+)
+
 type HandshakePacket struct {
 	PacketLength         uint64
 	SequenceId           uint64
@@ -38,6 +43,7 @@ type CapabilityFlags struct {
 	MultiStatements            bool
 	MultiResults               bool
 	PsMultiResults             bool
+	PluginAuth                 bool
 	ConnectAttrs               bool
 	PluginAuthLenEncClientData bool
 	CanHandleExpiredPasswords  bool
@@ -86,14 +92,15 @@ func (hs *HandshakePacket) decodeCapabilityFlags() {
 		MultiStatements:            (hs.CapabilityFlags2[0] & 1) > 0,
 		MultiResults:               (hs.CapabilityFlags2[0] & 2) > 0,
 		PsMultiResults:             (hs.CapabilityFlags2[0] & 4) > 0,
-		ConnectAttrs:               (hs.CapabilityFlags2[0] & 8) > 0,
-		PluginAuthLenEncClientData: (hs.CapabilityFlags2[0] & 16) > 0,
-		CanHandleExpiredPasswords:  (hs.CapabilityFlags2[0] & 32) > 0,
-		SessionTrack:               (hs.CapabilityFlags2[0] & 64) > 0,
-		DeprecateEOF:               (hs.CapabilityFlags2[1] & 128) > 0,
-		SslVerifyServerCert:        (hs.CapabilityFlags2[1] & 1) > 0,
-		OptionalResultSetMetadata:  (hs.CapabilityFlags2[1] & 2) > 0,
-		RememberOptions:            (hs.CapabilityFlags2[1] & 4) > 0,
+		PluginAuth:                 (hs.CapabilityFlags2[0] & 8) > 0,
+		ConnectAttrs:               (hs.CapabilityFlags2[0] & 16) > 0,
+		PluginAuthLenEncClientData: (hs.CapabilityFlags2[0] & 32) > 0,
+		CanHandleExpiredPasswords:  (hs.CapabilityFlags2[0] & 64) > 0,
+		SessionTrack:               (hs.CapabilityFlags2[0] & 128) > 0,
+		DeprecateEOF:               (hs.CapabilityFlags2[1] & 1) > 0,
+		SslVerifyServerCert:        (hs.CapabilityFlags2[1] & 2) > 0,
+		OptionalResultSetMetadata:  (hs.CapabilityFlags2[1] & 4) > 0,
+		RememberOptions:            (hs.CapabilityFlags2[1] & 8) > 0,
 	}
 }
 
@@ -200,4 +207,216 @@ func (c *Conn) handshakePacket() (*HandshakePacket, error) {
 	}
 
 	return &packet, nil
+}
+
+type HandshakeResponse struct {
+	ClientFlag         *CapabilityFlags
+	MaxPacketSize      uint64
+	CharacterSet       uint64
+	Username           string
+	AuthResponseLength uint64
+	AuthResponse       string
+	Database           string
+	ClientPluginName   string
+	KeyValues          map[string]string
+}
+
+func (hr *HandshakeResponse) encode() []byte {
+	buf := bytes.NewBuffer(make([]byte, 0))
+
+	// Capabilities flag.
+	flags := make([]byte, 4)
+	if hr.ClientFlag.LongPassword {
+		flags[0] |= 0x1
+	}
+
+	if hr.ClientFlag.FoundRows {
+		flags[0] |= 0x2
+	}
+
+	if hr.ClientFlag.LongFlag {
+		flags[0] |= 0x4
+	}
+
+	if hr.ClientFlag.ConnectWithDb {
+		flags[0] |= 0x8
+	}
+
+	if hr.ClientFlag.NoSchema {
+		flags[0] |= 0x10
+	}
+
+	if hr.ClientFlag.Compress {
+		flags[0] |= 0x20
+	}
+
+	if hr.ClientFlag.Odbc {
+		flags[0] |= 0x40
+	}
+
+	if hr.ClientFlag.LocalFiles {
+		flags[0] |= 0x80
+	}
+
+	if hr.ClientFlag.IgnoreSpace {
+		flags[1] |= 0x1
+	}
+
+	if hr.ClientFlag.Protocol41 {
+		flags[1] |= 0x2
+	}
+
+	if hr.ClientFlag.Interactive {
+		flags[1] |= 0x4
+	}
+
+	if hr.ClientFlag.Ssl {
+		flags[1] |= 0x8
+	}
+
+	if hr.ClientFlag.IgnoreSigpipe {
+		flags[1] |= 0x10
+	}
+
+	if hr.ClientFlag.Transactions {
+		flags[1] |= 0x20
+	}
+
+	if hr.ClientFlag.Reserved {
+		flags[1] |= 0x40
+	}
+
+	if hr.ClientFlag.Reserved2 {
+		flags[1] |= 0x80
+	}
+
+	if hr.ClientFlag.MultiStatements {
+		flags[2] |= 0x1
+	}
+
+	if hr.ClientFlag.MultiResults {
+		flags[2] |= 0x2
+	}
+
+	if hr.ClientFlag.PsMultiResults {
+		flags[2] |= 0x4
+	}
+
+	if hr.ClientFlag.PluginAuth {
+		flags[2] |= 0x8
+	}
+
+	if hr.ClientFlag.ConnectAttrs {
+		flags[2] |= 0x10
+	}
+
+	if hr.ClientFlag.PluginAuthLenEncClientData {
+		flags[2] |= 0x20
+	}
+
+	if hr.ClientFlag.CanHandleExpiredPasswords {
+		flags[2] |= 0x40
+	}
+
+	if hr.ClientFlag.SessionTrack {
+		flags[2] |= 0x80
+	}
+
+	if hr.ClientFlag.DeprecateEOF {
+		flags[3] |= 0x1
+	}
+
+	if hr.ClientFlag.SslVerifyServerCert {
+		flags[3] |= 0x2
+	}
+
+	if hr.ClientFlag.OptionalResultSetMetadata {
+		flags[3] |= 0x4
+	}
+
+	if hr.ClientFlag.RememberOptions {
+		flags[3] |= 0x8
+	}
+
+	// Write Capability Flags.
+	buf.Write(flags)
+
+	// Write MaxPacketSize
+	mps := make([]byte, 4)
+	binary.LittleEndian.PutUint32(mps, uint32(MaxPacketSize))
+	buf.Write(mps)
+
+	// Write CharacterSet
+	cs := make([]byte, 2)
+	binary.LittleEndian.PutUint16(cs, uint16(hr.CharacterSet))
+	buf.Write(cs[:1])
+
+	// Write Filler
+	buf.Write(make([]byte, 23))
+
+	// Write username
+	u := append([]byte(hr.Username), NullByte)
+	buf.Write(u)
+
+	if hr.ClientFlag.PluginAuth && hr.AuthResponseLength > 0 {
+		pal := make([]byte, 2)
+		binary.LittleEndian.PutUint16(pal, uint16(hr.AuthResponseLength))
+		buf.Write(pal[:1])
+		buf.Write([]byte(hr.AuthResponse))
+	}
+
+	if hr.ClientFlag.ConnectWithDb {
+		buf.Write(append([]byte(hr.Database), NullByte))
+	}
+
+	pl := make([]byte, 4)
+	binary.LittleEndian.PutUint32(pl, uint32(buf.Len()))
+	p := append(pl[:3], 1)
+	p = append(p, buf.Bytes()...)
+	buf = bytes.NewBuffer(p)
+
+	return buf.Bytes()
+}
+
+func (c *Conn) handshakeResponse() *HandshakeResponse {
+	return &HandshakeResponse{
+		ClientFlag: &CapabilityFlags{
+			LongPassword:               true,
+			FoundRows:                  true,
+			LongFlag:                   true,
+			ConnectWithDb:              true,
+			NoSchema:                   false,
+			Compress:                   true,
+			Odbc:                       false,
+			LocalFiles:                 false,
+			IgnoreSpace:                true,
+			Protocol41:                 true,
+			Interactive:                true,
+			Ssl:                        c.Config.SSL,
+			IgnoreSigpipe:              false,
+			Transactions:               true,
+			Reserved:                   false,
+			Reserved2:                  false,
+			MultiStatements:            false,
+			MultiResults:               false,
+			PsMultiResults:             true,
+			PluginAuth:                 true,
+			ConnectAttrs:               false,
+			PluginAuthLenEncClientData: true,
+			CanHandleExpiredPasswords:  false,
+			SessionTrack:               true,
+			DeprecateEOF:               true,
+			SslVerifyServerCert:        c.Config.VerifyCert,
+			OptionalResultSetMetadata:  true,
+			RememberOptions:            true,
+		},
+		MaxPacketSize:      MaxPacketSize,
+		CharacterSet:       45,
+		Username:           c.Config.User,
+		AuthResponseLength: 5,
+		AuthResponse:       "Hello",
+		Database:           c.Config.Database,
+		ClientPluginName:   c.Handshake.AuthPluginName,
+		KeyValues:          nil,
+	}
 }

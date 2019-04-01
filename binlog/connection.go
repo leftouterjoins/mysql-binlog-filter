@@ -12,6 +12,7 @@ import (
 )
 
 const NullByte byte = '\x00'
+const MaxPacketSize = 16777216
 
 // MySQL Packet Data Types
 const TypeNullTerminatedString = int(0)
@@ -19,11 +20,14 @@ const TypeFixedString = int(1)
 const TypeFixedInt = int(2)
 
 type Config struct {
-	Host    string `json:"host"`
-	Port    int    `json:"port"`
-	User    string `json:"user"`
-	Pass    string `json:"password"`
-	Timeout time.Duration
+	Host       string `json:"host"`
+	Port       int    `json:"port"`
+	User       string `json:"user"`
+	Pass       string `json:"password"`
+	Database   string `json:"database"`
+	SSL        bool   `json:"ssl"`
+	VerifyCert bool   `json:"verify_cert"`
+	Timeout    time.Duration
 }
 
 func newBinlogConfig(dsn string) (*Config, error) {
@@ -36,8 +40,8 @@ func newBinlogConfig(dsn string) (*Config, error) {
 }
 
 type Conn struct {
-	Config  *Config
-	tcpConn *net.TCPConn
+	Config    *Config
+	tcpConn   *net.TCPConn
 	Handshake *HandshakePacket
 }
 
@@ -59,7 +63,7 @@ func (c Conn) Begin() (driver.Tx, error) {
 	return nil, nil
 }
 
-type Driver struct {}
+type Driver struct{}
 
 func (d Driver) Open(dsn string) (driver.Conn, error) {
 	config, err := newBinlogConfig(dsn)
@@ -69,7 +73,7 @@ func (d Driver) Open(dsn string) (driver.Conn, error) {
 
 	blConn := newBinlogConn(config)
 
-	dialer := net.Dialer{Timeout: blConn.Config.Timeout,}
+	dialer := net.Dialer{Timeout: blConn.Config.Timeout}
 	addr := fmt.Sprintf("%s:%d", blConn.Config.Host, blConn.Config.Port)
 	c, err := dialer.Dial("tcp", addr)
 	blConn.tcpConn = c.(*net.TCPConn)
@@ -85,7 +89,10 @@ func (d Driver) Open(dsn string) (driver.Conn, error) {
 	hsp, err := blConn.handshakePacket()
 	blConn.Handshake = hsp
 
-	fmt.Printf("%+v", blConn.Handshake)
+	resp := blConn.handshakeResponse()
+	b := resp.encode()
+	fmt.Printf("%d", b)
+	_, err = blConn.tcpConn.Write(b)
 
 	return blConn, err
 }
