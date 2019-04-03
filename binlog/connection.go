@@ -18,6 +18,7 @@ const MaxPacketSize = 16777216
 const TypeNullTerminatedString = int(0)
 const TypeFixedString = int(1)
 const TypeFixedInt = int(2)
+const TypeLenEncodedInt = int(3)
 
 type Config struct {
 	Host       string `json:"host"`
@@ -90,7 +91,7 @@ func (d Driver) Open(dsn string) (driver.Conn, error) {
 	blConn.Handshake = hsp
 
 	resp := blConn.handshakeResponse()
-	b := resp.encode()
+	b := resp.encode(&blConn)
 	fmt.Printf("%d", b)
 	_, err = blConn.tcpConn.Write(b)
 

@@ -221,7 +221,7 @@ type HandshakeResponse struct {
 	KeyValues          map[string]string
 }
 
-func (hr *HandshakeResponse) encode() []byte {
+func (hr *HandshakeResponse) encode(c *Conn) []byte {
 	buf := bytes.NewBuffer(make([]byte, 0))
 
 	// Capabilities flag.
@@ -358,15 +358,18 @@ func (hr *HandshakeResponse) encode() []byte {
 	u := append([]byte(hr.Username), NullByte)
 	buf.Write(u)
 
-	if hr.ClientFlag.PluginAuth && hr.AuthResponseLength > 0 {
-		pal := make([]byte, 2)
-		binary.LittleEndian.PutUint16(pal, uint16(hr.AuthResponseLength))
-		buf.Write(pal[:1])
-		buf.Write([]byte(hr.AuthResponse))
+	if hr.ClientFlag.PluginAuthLenEncClientData {
+
 	}
 
+	// Write database name
 	if hr.ClientFlag.ConnectWithDb {
 		buf.Write(append([]byte(hr.Database), NullByte))
+	}
+
+	// Write auth plugin
+	if hr.ClientFlag.PluginAuth {
+		buf.Write([]byte(hr.ClientPluginName))
 	}
 
 	pl := make([]byte, 4)
@@ -413,8 +416,8 @@ func (c *Conn) handshakeResponse() *HandshakeResponse {
 		MaxPacketSize:      MaxPacketSize,
 		CharacterSet:       45,
 		Username:           c.Config.User,
-		AuthResponseLength: 5,
-		AuthResponse:       "Hello",
+		AuthResponseLength: 4,
+		AuthResponse:       "root",
 		Database:           c.Config.Database,
 		ClientPluginName:   c.Handshake.AuthPluginName,
 		KeyValues:          nil,
