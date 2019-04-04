@@ -20,6 +20,11 @@ const TypeFixedString = int(1)
 const TypeFixedInt = int(2)
 const TypeLenEncodedInt = int(3)
 
+const MaxUint8 = 1<<8 - 1
+const MaxUint16 = 1<<16 - 1
+const MaxUint24 = 1<<24 - 1
+const MaxUint64 = 1<<64 - 1
+
 type Config struct {
 	Host       string `json:"host"`
 	Port       int    `json:"port"`
@@ -87,12 +92,10 @@ func (d Driver) Open(dsn string) (driver.Conn, error) {
 		}
 	}
 
-	hsp, err := blConn.handshakePacket()
-	blConn.Handshake = hsp
+	err = blConn.decodeHandshakePacket()
+	b := blConn.encodeHandshakeResponse()
+	fmt.Printf("%08b\n%d\n%s", b, b, b)
 
-	resp := blConn.handshakeResponse()
-	b := resp.encode(&blConn)
-	fmt.Printf("%d", b)
 	_, err = blConn.tcpConn.Write(b)
 
 	return blConn, err
@@ -212,4 +215,38 @@ func (c *Conn) popFixedInt(l uint64) (uint64, error) {
 	i, err = binary.ReadUvarint(b)
 
 	return i, err
+}
+
+func (c *Conn) encFixedLenInt(l uint64, v uint64) []byte {
+	b := make([]byte, 4)
+	binary.LittleEndian.PutUint64(b, v)
+	return b[:(l - 1)]
+}
+
+func (c *Conn) encLenEncInt(v uint64) []byte {
+	prefix := make([]byte, 1)
+	var b []byte
+	switch {
+	case v < MaxUint8:
+		b = make([]byte, 2)
+		binary.LittleEndian.PutUint16(b, uint16(v))
+		b = b[:1]
+	case v >= MaxUint8 && v < MaxUint16:
+		prefix[0] = 0xFC
+		b = make([]byte, 3)
+		binary.LittleEndian.PutUint16(b, uint16(v))
+		b = b[:2]
+	case v >= MaxUint16 && v < MaxUint24:
+		prefix[0] = 0xFD
+		b = make([]byte, 4)
+		binary.LittleEndian.PutUint32(b, uint32(v))
+		b = b[:3]
+	case v >= MaxUint24 && v < MaxUint64:
+		prefix[0] = 0xFE
+		b = make([]byte, 9)
+		binary.LittleEndian.PutUint64(b, uint64(v))
+	}
+
+	b = append(prefix, b...)
+	return b
 }
