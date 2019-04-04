@@ -5,6 +5,58 @@ import (
 	"encoding/binary"
 )
 
+type capabilityFlag uint32
+
+const (
+	longPassword capabilityFlag = 1 << iota
+	foundRows
+	longFlag
+	connectWithDb
+	noSchema
+	compress
+	odbc
+	localFiles
+	ignoreSpace
+	protocol41
+	interactive
+	ssl
+	ignoreSigpipe
+	transactions
+	legacyProtocol41
+	secureConnection
+	multiStatements
+	multiResults
+	psMultiResults
+	pluginAuth
+	connectAttrs
+	pluginAuthLenEncClientData
+	canHandleExpiredPasswords
+	sessionTrack
+	deprecateEOF
+	sslVerifyServerCert
+	optionalResultSetMetadata
+	rememberOptions
+)
+
+type statusFlag uint16
+
+const (
+	inTrans statusFlag = 1 << iota
+	autocommit
+	moreResultsExists
+	queryNoGoodIndexUsed
+	queryNoIndexUsed
+	cursorExists
+	lastRowSent
+	dBDropped
+	noBackslashEscapes
+	metadataChanged
+	queryWasSlow
+	psOutParams
+	inTransReadonly
+	sessionStateChanged
+)
+
 type CapabilityFlags struct {
 	LongPassword               bool
 	FoundRows                  bool
@@ -37,20 +89,20 @@ type CapabilityFlags struct {
 }
 
 type StatusFlags struct {
-	StatusInTrans            bool
-	StatusAutocommit         bool
-	MoreResultsExists        bool
-	QueryNoGoodIndexUsed     bool
-	QueryNoIndexUsed         bool
-	StatusCursorExists       bool
-	StatusLastRowSent        bool
-	StatusDBDropped          bool
-	StatusNoBackslashEscapes bool
-	StatusMetadataChanged    bool
-	QueryWasSlow             bool
-	PSOutParams              bool
-	StatusInTransReadonly    bool
-	SessionStateChanged      bool
+	InTrans              bool
+	Autocommit           bool
+	MoreResultsExists    bool
+	QueryNoGoodIndexUsed bool
+	QueryNoIndexUsed     bool
+	CursorExists         bool
+	LastRowSent          bool
+	DBDropped            bool
+	NoBackslashEscapes   bool
+	MetadataChanged      bool
+	QueryWasSlow         bool
+	PSOutParams          bool
+	InTransReadonly      bool
+	SessionStateChanged  bool
 }
 
 type HandshakePacket struct {
@@ -84,54 +136,59 @@ type HandshakeResponse struct {
 }
 
 func (c *Conn) decodeCapabilityFlags(hs *HandshakePacket) {
+	var cfb = append(hs.CapabilityFlags1, hs.CapabilityFlags2...)
+	var cf = capabilityFlag(binary.LittleEndian.Uint32(cfb))
+
 	hs.CapabilityFlags = &CapabilityFlags{
-		LongPassword:               (hs.CapabilityFlags1[0] & 1) > 0,
-		FoundRows:                  (hs.CapabilityFlags1[0] & 2) > 0,
-		LongFlag:                   (hs.CapabilityFlags1[0] & 4) > 0,
-		ConnectWithDb:              (hs.CapabilityFlags1[0] & 8) > 0,
-		NoSchema:                   (hs.CapabilityFlags1[0] & 16) > 0,
-		Compress:                   (hs.CapabilityFlags1[0] & 32) > 0,
-		ODBC:                       (hs.CapabilityFlags1[0] & 64) > 0,
-		LocalFiles:                 (hs.CapabilityFlags1[0] & 128) > 0,
-		IgnoreSpace:                (hs.CapabilityFlags1[1] & 1) > 0,
-		Protocol41:                 (hs.CapabilityFlags1[1] & 2) > 0,
-		Interactive:                (hs.CapabilityFlags1[1] & 4) > 0,
-		SSL:                        (hs.CapabilityFlags1[1] & 8) > 0,
-		IgnoreSigpipe:              (hs.CapabilityFlags1[1] & 16) > 0,
-		Transactions:               (hs.CapabilityFlags1[1] & 32) > 0,
-		LegacyProtocol41:           (hs.CapabilityFlags1[1] & 64) > 0,
-		SecureConnection:           (hs.CapabilityFlags1[1] & 128) > 0,
-		MultiStatements:            (hs.CapabilityFlags2[0] & 1) > 0,
-		MultiResults:               (hs.CapabilityFlags2[0] & 2) > 0,
-		PSMultiResults:             (hs.CapabilityFlags2[0] & 4) > 0,
-		PluginAuth:                 (hs.CapabilityFlags2[0] & 8) > 0,
-		ConnectAttrs:               (hs.CapabilityFlags2[0] & 16) > 0,
-		PluginAuthLenEncClientData: (hs.CapabilityFlags2[0] & 32) > 0,
-		CanHandleExpiredPasswords:  (hs.CapabilityFlags2[0] & 64) > 0,
-		SessionTrack:               (hs.CapabilityFlags2[0] & 128) > 0,
-		DeprecateEOF:               (hs.CapabilityFlags2[1] & 1) > 0,
-		SSLVerifyServerCert:        (hs.CapabilityFlags2[1] & 2) > 0,
-		OptionalResultSetMetadata:  (hs.CapabilityFlags2[1] & 4) > 0,
-		RememberOptions:            (hs.CapabilityFlags2[1] & 8) > 0,
+		LongPassword:               cf&longPassword == 0,
+		FoundRows:                  cf&foundRows == 0,
+		LongFlag:                   cf&longFlag == 0,
+		ConnectWithDb:              cf&connectWithDb == 0,
+		NoSchema:                   cf&noSchema == 0,
+		Compress:                   cf&compress == 0,
+		ODBC:                       cf&odbc == 0,
+		LocalFiles:                 cf&localFiles == 0,
+		IgnoreSpace:                cf&ignoreSpace == 0,
+		Protocol41:                 cf&protocol41 == 0,
+		Interactive:                cf&interactive == 0,
+		SSL:                        cf&ssl == 0,
+		IgnoreSigpipe:              cf&ignoreSigpipe == 0,
+		Transactions:               cf&transactions == 0,
+		LegacyProtocol41:           cf&legacyProtocol41 == 0,
+		SecureConnection:           cf&secureConnection == 0,
+		MultiStatements:            cf&multiStatements == 0,
+		MultiResults:               cf&multiResults == 0,
+		PSMultiResults:             cf&psMultiResults == 0,
+		PluginAuth:                 cf&pluginAuth == 0,
+		ConnectAttrs:               cf&connectAttrs == 0,
+		PluginAuthLenEncClientData: cf&pluginAuthLenEncClientData == 0,
+		CanHandleExpiredPasswords:  cf&canHandleExpiredPasswords == 0,
+		SessionTrack:               cf&sessionTrack == 0,
+		DeprecateEOF:               cf&deprecateEOF == 0,
+		SSLVerifyServerCert:        cf&sslVerifyServerCert == 0,
+		OptionalResultSetMetadata:  cf&optionalResultSetMetadata == 0,
+		RememberOptions:            cf&rememberOptions == 0,
 	}
 }
 
 func (c *Conn) decodeStatusFlags(hs *HandshakePacket) {
+	var sf = statusFlag(binary.LittleEndian.Uint32(hs.Status))
+
 	hs.StatusFlags = &StatusFlags{
-		StatusInTrans:            (hs.Status[0] & 1) > 0,
-		StatusAutocommit:         (hs.Status[0] & 2) > 0,
-		MoreResultsExists:        (hs.Status[0] & 4) > 0,
-		QueryNoGoodIndexUsed:     (hs.Status[0] & 8) > 0,
-		QueryNoIndexUsed:         (hs.Status[0] & 16) > 0,
-		StatusCursorExists:       (hs.Status[0] & 32) > 0,
-		StatusLastRowSent:        (hs.Status[0] & 64) > 0,
-		StatusDBDropped:          (hs.Status[0] & 128) > 0,
-		StatusNoBackslashEscapes: (hs.Status[1] & 1) > 0,
-		StatusMetadataChanged:    (hs.Status[1] & 2) > 0,
-		QueryWasSlow:             (hs.Status[1] & 4) > 0,
-		PSOutParams:              (hs.Status[1] & 8) > 0,
-		StatusInTransReadonly:    (hs.Status[1] & 16) > 0,
-		SessionStateChanged:      (hs.Status[1] & 32) > 0,
+		InTrans:              sf&inTrans == 0,
+		Autocommit:           sf&autocommit == 0,
+		MoreResultsExists:    sf&moreResultsExists == 0,
+		QueryNoGoodIndexUsed: sf&queryNoGoodIndexUsed == 0,
+		QueryNoIndexUsed:     sf&queryNoIndexUsed == 0,
+		CursorExists:         sf&cursorExists == 0,
+		LastRowSent:          sf&lastRowSent == 0,
+		DBDropped:            sf&dBDropped == 0,
+		NoBackslashEscapes:   sf&noBackslashEscapes == 0,
+		MetadataChanged:      sf&metadataChanged == 0,
+		QueryWasSlow:         sf&queryWasSlow == 0,
+		PSOutParams:          sf&psOutParams == 0,
+		InTransReadonly:      sf&inTransReadonly == 0,
+		SessionStateChanged:  sf&sessionStateChanged == 0,
 	}
 }
 
