@@ -3,65 +3,14 @@ package binlog
 import (
 	"bytes"
 	"encoding/binary"
+	"reflect"
 )
 
-type capabilityFlag uint32
-
-const (
-	longPassword capabilityFlag = 1 << iota
-	foundRows
-	longFlag
-	connectWithDb
-	noSchema
-	compress
-	odbc
-	localFiles
-	ignoreSpace
-	protocol41
-	interactive
-	ssl
-	ignoreSigpipe
-	transactions
-	legacyProtocol41
-	secureConnection
-	multiStatements
-	multiResults
-	psMultiResults
-	pluginAuth
-	connectAttrs
-	pluginAuthLenEncClientData
-	canHandleExpiredPasswords
-	sessionTrack
-	deprecateEOF
-	sslVerifyServerCert
-	optionalResultSetMetadata
-	rememberOptions
-)
-
-type statusFlag uint16
-
-const (
-	inTrans statusFlag = 1 << iota
-	autocommit
-	moreResultsExists
-	queryNoGoodIndexUsed
-	queryNoIndexUsed
-	cursorExists
-	lastRowSent
-	dBDropped
-	noBackslashEscapes
-	metadataChanged
-	queryWasSlow
-	psOutParams
-	inTransReadonly
-	sessionStateChanged
-)
-
-type CapabilityFlags struct {
+type Capabilities struct {
 	LongPassword               bool
 	FoundRows                  bool
 	LongFlag                   bool
-	ConnectWithDb              bool
+	ConnectWithDB              bool
 	NoSchema                   bool
 	Compress                   bool
 	ODBC                       bool
@@ -88,7 +37,7 @@ type CapabilityFlags struct {
 	RememberOptions            bool
 }
 
-type StatusFlags struct {
+type Status struct {
 	InTrans              bool
 	Autocommit           bool
 	MoreResultsExists    bool
@@ -105,7 +54,7 @@ type StatusFlags struct {
 	SessionStateChanged  bool
 }
 
-type HandshakePacket struct {
+type Handshake struct {
 	PacketLength         uint64
 	SequenceID           uint64
 	ProtocolVersion      uint64
@@ -114,17 +63,17 @@ type HandshakePacket struct {
 	AuthPluginDataPart1  []byte
 	CapabilityFlags1     []byte
 	Charset              uint64
-	Status               []byte
+	StatusFlags          []byte
 	CapabilityFlags2     []byte
 	AuthPluginDataLength uint64
 	AuthPluginDataPart2  []byte
 	AuthPluginName       string
-	CapabilityFlags      *CapabilityFlags
-	StatusFlags          *StatusFlags
+	Capabilities         *Capabilities
+	Status               *Status
 }
 
 type HandshakeResponse struct {
-	ClientFlag         *CapabilityFlags
+	ClientFlag         *Capabilities
 	MaxPacketSize      uint64
 	CharacterSet       uint64
 	Username           string
@@ -135,65 +84,44 @@ type HandshakeResponse struct {
 	KeyValues          map[string]string
 }
 
-func (c *Conn) decodeCapabilityFlags(hs *HandshakePacket) {
-	var cfb = append(hs.CapabilityFlags1, hs.CapabilityFlags2...)
-	var cf = capabilityFlag(binary.LittleEndian.Uint32(cfb))
-
-	hs.CapabilityFlags = &CapabilityFlags{
-		LongPassword:               cf&longPassword == 0,
-		FoundRows:                  cf&foundRows == 0,
-		LongFlag:                   cf&longFlag == 0,
-		ConnectWithDb:              cf&connectWithDb == 0,
-		NoSchema:                   cf&noSchema == 0,
-		Compress:                   cf&compress == 0,
-		ODBC:                       cf&odbc == 0,
-		LocalFiles:                 cf&localFiles == 0,
-		IgnoreSpace:                cf&ignoreSpace == 0,
-		Protocol41:                 cf&protocol41 == 0,
-		Interactive:                cf&interactive == 0,
-		SSL:                        cf&ssl == 0,
-		IgnoreSigpipe:              cf&ignoreSigpipe == 0,
-		Transactions:               cf&transactions == 0,
-		LegacyProtocol41:           cf&legacyProtocol41 == 0,
-		SecureConnection:           cf&secureConnection == 0,
-		MultiStatements:            cf&multiStatements == 0,
-		MultiResults:               cf&multiResults == 0,
-		PSMultiResults:             cf&psMultiResults == 0,
-		PluginAuth:                 cf&pluginAuth == 0,
-		ConnectAttrs:               cf&connectAttrs == 0,
-		PluginAuthLenEncClientData: cf&pluginAuthLenEncClientData == 0,
-		CanHandleExpiredPasswords:  cf&canHandleExpiredPasswords == 0,
-		SessionTrack:               cf&sessionTrack == 0,
-		DeprecateEOF:               cf&deprecateEOF == 0,
-		SSLVerifyServerCert:        cf&sslVerifyServerCert == 0,
-		OptionalResultSetMetadata:  cf&optionalResultSetMetadata == 0,
-		RememberOptions:            cf&rememberOptions == 0,
+func bitmaskToStruct(b []byte, t reflect.Type) interface{} {
+	l := len(b)
+	var x uint64
+	switch {
+	case l > 32:
+		x = uint64(binary.LittleEndian.Uint64(b))
+	case l > 16:
+		x = uint64(binary.LittleEndian.Uint32(b))
+	case l > 8:
+		x = uint64(binary.LittleEndian.Uint16(b))
+	default:
+		x = uint64(uint(b[0]))
 	}
+
+	v := reflect.New(t.Elem()).Elem()
+	for i := 0; i < v.NumField(); i++ {
+		f := v.Field(i)
+		flag := uint64(1 << uint(i))
+		v := x&flag > 0
+		f.SetBool(v)
+	}
+
+	return v.Interface()
 }
 
-func (c *Conn) decodeStatusFlags(hs *HandshakePacket) {
-	var sf = statusFlag(binary.LittleEndian.Uint32(hs.Status))
+func (c *Conn) decodeCapabilityFlags(hs *Handshake) {
+	var cfb = append(hs.CapabilityFlags1, hs.CapabilityFlags2...)
+	capabilities := bitmaskToStruct(cfb, reflect.TypeOf(hs.Capabilities)).(Capabilities)
+	hs.Capabilities = &capabilities
+}
 
-	hs.StatusFlags = &StatusFlags{
-		InTrans:              sf&inTrans == 0,
-		Autocommit:           sf&autocommit == 0,
-		MoreResultsExists:    sf&moreResultsExists == 0,
-		QueryNoGoodIndexUsed: sf&queryNoGoodIndexUsed == 0,
-		QueryNoIndexUsed:     sf&queryNoIndexUsed == 0,
-		CursorExists:         sf&cursorExists == 0,
-		LastRowSent:          sf&lastRowSent == 0,
-		DBDropped:            sf&dBDropped == 0,
-		NoBackslashEscapes:   sf&noBackslashEscapes == 0,
-		MetadataChanged:      sf&metadataChanged == 0,
-		QueryWasSlow:         sf&queryWasSlow == 0,
-		PSOutParams:          sf&psOutParams == 0,
-		InTransReadonly:      sf&inTransReadonly == 0,
-		SessionStateChanged:  sf&sessionStateChanged == 0,
-	}
+func (c *Conn) decodeStatusFlags(hs *Handshake) {
+	status := bitmaskToStruct(hs.StatusFlags, reflect.TypeOf(hs.Status)).(Status)
+	hs.Status = &status
 }
 
 func (c *Conn) decodeHandshakePacket() error {
-	packet := HandshakePacket{}
+	packet := Handshake{}
 	var err error
 
 	packet.PacketLength, err = c.getInt(TypeFixedInt, 3)
@@ -241,7 +169,7 @@ func (c *Conn) decodeHandshakePacket() error {
 		return err
 	}
 
-	packet.Status, err = c.getBytes(2)
+	packet.StatusFlags, err = c.getBytes(2)
 	if err != nil {
 		return err
 	}
@@ -285,121 +213,10 @@ func (c *Conn) encodeHandshakeResponse() []byte {
 	buf := bytes.NewBuffer(make([]byte, 0))
 
 	// Capabilities flag.
-	flags := make([]byte, 4)
-	if hr.ClientFlag.LongPassword {
-		flags[0] |= 0x1
-	}
-
-	if hr.ClientFlag.FoundRows {
-		flags[0] |= 0x2
-	}
-
-	if hr.ClientFlag.LongFlag {
-		flags[0] |= 0x4
-	}
-
-	if hr.ClientFlag.ConnectWithDb {
-		flags[0] |= 0x8
-	}
-
-	if hr.ClientFlag.NoSchema {
-		flags[0] |= 0x10
-	}
-
-	if hr.ClientFlag.Compress {
-		flags[0] |= 0x20
-	}
-
-	if hr.ClientFlag.ODBC {
-		flags[0] |= 0x40
-	}
-
-	if hr.ClientFlag.LocalFiles {
-		flags[0] |= 0x80
-	}
-
-	if hr.ClientFlag.IgnoreSpace {
-		flags[1] |= 0x1
-	}
-
-	if hr.ClientFlag.Protocol41 {
-		flags[1] |= 0x2
-	}
-
-	if hr.ClientFlag.Interactive {
-		flags[1] |= 0x4
-	}
-
-	if hr.ClientFlag.SSL {
-		flags[1] |= 0x8
-	}
-
-	if hr.ClientFlag.IgnoreSigpipe {
-		flags[1] |= 0x10
-	}
-
-	if hr.ClientFlag.Transactions {
-		flags[1] |= 0x20
-	}
-
-	if hr.ClientFlag.LegacyProtocol41 {
-		flags[1] |= 0x40
-	}
-
-	if hr.ClientFlag.SecureConnection {
-		flags[1] |= 0x80
-	}
-
-	if hr.ClientFlag.MultiStatements {
-		flags[2] |= 0x1
-	}
-
-	if hr.ClientFlag.MultiResults {
-		flags[2] |= 0x2
-	}
-
-	if hr.ClientFlag.PSMultiResults {
-		flags[2] |= 0x4
-	}
-
-	if hr.ClientFlag.PluginAuth {
-		flags[2] |= 0x8
-	}
-
-	if hr.ClientFlag.ConnectAttrs {
-		flags[2] |= 0x10
-	}
-
-	if hr.ClientFlag.PluginAuthLenEncClientData {
-		flags[2] |= 0x20
-	}
-
-	if hr.ClientFlag.CanHandleExpiredPasswords {
-		flags[2] |= 0x40
-	}
-
-	if hr.ClientFlag.SessionTrack {
-		flags[2] |= 0x80
-	}
-
-	if hr.ClientFlag.DeprecateEOF {
-		flags[3] |= 0x1
-	}
-
-	if hr.ClientFlag.SSLVerifyServerCert {
-		flags[3] |= 0x2
-	}
-
-	if hr.ClientFlag.OptionalResultSetMetadata {
-		flags[3] |= 0x4
-	}
-
-	if hr.ClientFlag.RememberOptions {
-		flags[3] |= 0x8
-	}
+	//var cf capability = 0
 
 	// Write Capability Flags.
-	buf.Write(flags)
+	//buf.Write([]byte(cf))
 
 	// Write MaxPacketSize
 	//buf.Write()
@@ -431,7 +248,7 @@ func (c *Conn) encodeHandshakeResponse() []byte {
 	}
 
 	// Write database name
-	if hr.ClientFlag.ConnectWithDb {
+	if hr.ClientFlag.ConnectWithDB {
 		buf.Write(append([]byte(hr.Database), NullByte))
 	}
 
@@ -451,11 +268,11 @@ func (c *Conn) encodeHandshakeResponse() []byte {
 
 func NewHandshakeResponse() *HandshakeResponse {
 	return &HandshakeResponse{
-		ClientFlag: &CapabilityFlags{
+		ClientFlag: &Capabilities{
 			LongPassword:               true,
 			FoundRows:                  true,
 			LongFlag:                   true,
-			ConnectWithDb:              true,
+			ConnectWithDB:              true,
 			NoSchema:                   false,
 			Compress:                   false,
 			ODBC:                       false,

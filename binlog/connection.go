@@ -11,19 +11,21 @@ import (
 	"time"
 )
 
-const NullByte byte = '\x00'
-const MaxPacketSize = 16777216
-
 // MySQL Packet Data Types
 const TypeNullTerminatedString = int(0)
 const TypeFixedString = int(1)
 const TypeFixedInt = int(2)
 const TypeLenEncodedInt = int(3)
 
+// Integer Maximums
 const MaxUint8 = 1<<8 - 1
 const MaxUint16 = 1<<16 - 1
 const MaxUint24 = 1<<24 - 1
 const MaxUint64 = 1<<64 - 1
+
+// Misc. Constants
+const NullByte byte = 0
+const MaxPacketSize = MaxUint16
 
 type Config struct {
 	Host       string `json:"host"`
@@ -48,7 +50,7 @@ func newBinlogConfig(dsn string) (*Config, error) {
 type Conn struct {
 	Config    *Config
 	tcpConn   *net.TCPConn
-	Handshake *HandshakePacket
+	Handshake *Handshake
 }
 
 func newBinlogConn(config *Config) Conn {
