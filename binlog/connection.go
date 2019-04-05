@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"reflect"
 	"time"
 )
 
@@ -251,4 +252,36 @@ func (c *Conn) encLenEncInt(v uint64) []byte {
 
 	b = append(prefix, b...)
 	return b
+}
+
+func (c *Conn) bitmaskToStruct(b []byte, s interface{}) interface{} {
+	l := len(b)
+	t := reflect.TypeOf(s)
+	v := reflect.New(t.Elem()).Elem()
+	for i := uint(0); i < uint(v.NumField()); i++ {
+		f := v.Field(int(i))
+		var v bool
+		switch {
+		case l > 4:
+			x := binary.LittleEndian.Uint64(b)
+			flag := uint64(1 << i)
+			v = x&flag > 0
+		case l > 2:
+			x := binary.LittleEndian.Uint32(b)
+			flag := uint32(1 << i)
+			v = x&flag > 0
+		case l > 1:
+			x := binary.LittleEndian.Uint16(b)
+			flag := uint16(1 << i)
+			v = x&flag > 0
+		default:
+			x := uint(b[0])
+			flag := uint(1 << i)
+			v = x&flag > 0
+		}
+
+		f.SetBool(v)
+	}
+
+	return v.Interface()
 }

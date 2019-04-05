@@ -3,7 +3,6 @@ package binlog
 import (
 	"bytes"
 	"encoding/binary"
-	"reflect"
 )
 
 type Capabilities struct {
@@ -84,39 +83,14 @@ type HandshakeResponse struct {
 	KeyValues          map[string]string
 }
 
-func bitmaskToStruct(b []byte, t reflect.Type) interface{} {
-	l := len(b)
-	var x uint64
-	switch {
-	case l > 32:
-		x = uint64(binary.LittleEndian.Uint64(b))
-	case l > 16:
-		x = uint64(binary.LittleEndian.Uint32(b))
-	case l > 8:
-		x = uint64(binary.LittleEndian.Uint16(b))
-	default:
-		x = uint64(uint(b[0]))
-	}
-
-	v := reflect.New(t.Elem()).Elem()
-	for i := 0; i < v.NumField(); i++ {
-		f := v.Field(i)
-		flag := uint64(1 << uint(i))
-		v := x&flag > 0
-		f.SetBool(v)
-	}
-
-	return v.Interface()
-}
-
 func (c *Conn) decodeCapabilityFlags(hs *Handshake) {
 	var cfb = append(hs.CapabilityFlags1, hs.CapabilityFlags2...)
-	capabilities := bitmaskToStruct(cfb, reflect.TypeOf(hs.Capabilities)).(Capabilities)
+	capabilities := c.bitmaskToStruct(cfb, hs.Capabilities).(Capabilities)
 	hs.Capabilities = &capabilities
 }
 
 func (c *Conn) decodeStatusFlags(hs *Handshake) {
-	status := bitmaskToStruct(hs.StatusFlags, reflect.TypeOf(hs.Status)).(Status)
+	status := c.bitmaskToStruct(hs.StatusFlags, hs.Status).(Status)
 	hs.Status = &status
 }
 
@@ -204,7 +178,6 @@ func (c *Conn) decodeHandshakePacket() error {
 	}
 
 	c.Handshake = &packet
-
 	return nil
 }
 
