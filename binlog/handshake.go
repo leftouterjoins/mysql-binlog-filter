@@ -3,6 +3,8 @@ package binlog
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
+	"os"
 )
 
 type Capabilities struct {
@@ -96,89 +98,29 @@ func (c *Conn) decodeStatusFlags(hs *Handshake) {
 
 func (c *Conn) decodeHandshakePacket() error {
 	packet := Handshake{}
-	var err error
-
-	packet.PacketLength, err = c.getInt(TypeFixedInt, 3)
-	if err != nil {
-		return err
-	}
-
-	packet.SequenceID, err = c.getInt(TypeFixedInt, 1)
-	if err != nil {
-		return err
-	}
-
-	packet.ProtocolVersion, err = c.getInt(TypeFixedInt, 1)
-	if err != nil {
-		return err
-	}
-
-	packet.ServerVersion, err = c.getString(TypeNullTerminatedString, 0)
-	if err != nil {
-		return err
-	}
-
-	packet.ThreadID, err = c.getInt(TypeFixedInt, 4)
-	if err != nil {
-		return err
-	}
-
-	packet.AuthPluginDataPart1, err = c.getBytes(8)
-	if err != nil {
-		return err
-	}
-
-	err = c.consumeBytes(1)
-	if err != nil {
-		return err
-	}
-
-	packet.CapabilityFlags1, err = c.getBytes(2)
-	if err != nil {
-		return err
-	}
-
-	packet.Charset, err = c.getInt(TypeFixedInt, 1)
-	if err != nil {
-		return err
-	}
-
-	packet.StatusFlags, err = c.getBytes(2)
-	if err != nil {
-		return err
-	}
-
+	err := c.readWholePacket()
+	fmt.Println("\nEND")
+	os.Exit(0)
+	packet.PacketLength = c.getInt(TypeFixedInt, 3)
+	packet.SequenceID = c.getInt(TypeFixedInt, 1)
+	packet.ProtocolVersion = c.getInt(TypeFixedInt, 1)
+	packet.ServerVersion = c.getString(TypeNullTerminatedString, 0)
+	packet.ThreadID = c.getInt(TypeFixedInt, 4)
+	packet.AuthPluginDataPart1 = c.getBytes(8).Bytes()
+	c.discardBytes(1)
+	packet.CapabilityFlags1 = c.getBytes(2).Bytes()
+	packet.Charset = c.getInt(TypeFixedInt, 1)
+	packet.StatusFlags = c.getBytes(2).Bytes()
 	c.decodeStatusFlags(&packet)
-
-	packet.CapabilityFlags2, err = c.getBytes(2)
-	if err != nil {
-		return err
-	}
-
+	packet.CapabilityFlags2 = c.getBytes(2).Bytes()
 	c.decodeCapabilityFlags(&packet)
-
-	packet.AuthPluginDataLength, err = c.getInt(TypeFixedInt, 1)
-	if err != nil {
-		return err
-	}
-
-	err = c.consumeBytes(10)
-	if err != nil {
-		return err
-	}
-
-	packet.AuthPluginDataPart2, err = c.getBytes(packet.AuthPluginDataLength - 8)
-	if err != nil {
-		return err
-	}
-
-	packet.AuthPluginName, err = c.getString(TypeNullTerminatedString, 0)
-	if err != nil {
-		return err
-	}
-
+	packet.AuthPluginDataLength = c.getInt(TypeFixedInt, 1)
+	c.discardBytes(10)
+	packet.AuthPluginDataPart2 = c.getBytes(packet.AuthPluginDataLength - 8).Bytes()
+	packet.AuthPluginName = c.getString(TypeNullTerminatedString, 0)
 	c.Handshake = &packet
-	return nil
+
+	return err
 }
 
 func (c *Conn) encodeHandshakeResponse() []byte {
