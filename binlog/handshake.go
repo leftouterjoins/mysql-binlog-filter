@@ -3,8 +3,6 @@ package binlog
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
-	"os"
 )
 
 type Capabilities struct {
@@ -61,13 +59,13 @@ type Handshake struct {
 	ProtocolVersion      uint64
 	ServerVersion        string
 	ThreadID             uint64
-	AuthPluginDataPart1  []byte
-	CapabilityFlags1     []byte
+	AuthPluginDataPart1  *bytes.Buffer
+	CapabilityFlags1     *bytes.Buffer
 	Charset              uint64
-	StatusFlags          []byte
-	CapabilityFlags2     []byte
+	StatusFlags          *bytes.Buffer
+	CapabilityFlags2     *bytes.Buffer
 	AuthPluginDataLength uint64
-	AuthPluginDataPart2  []byte
+	AuthPluginDataPart2  *bytes.Buffer
 	AuthPluginName       string
 	Capabilities         *Capabilities
 	Status               *Status
@@ -86,41 +84,44 @@ type HandshakeResponse struct {
 }
 
 func (c *Conn) decodeCapabilityFlags(hs *Handshake) {
-	var cfb = append(hs.CapabilityFlags1, hs.CapabilityFlags2...)
+	var cfb = append(hs.CapabilityFlags1.Bytes(), hs.CapabilityFlags2.Bytes()...)
 	capabilities := c.bitmaskToStruct(cfb, hs.Capabilities).(Capabilities)
 	hs.Capabilities = &capabilities
 }
 
 func (c *Conn) decodeStatusFlags(hs *Handshake) {
-	status := c.bitmaskToStruct(hs.StatusFlags, hs.Status).(Status)
+	status := c.bitmaskToStruct(hs.StatusFlags.Bytes(), hs.Status).(Status)
 	hs.Status = &status
 }
 
 func (c *Conn) decodeHandshakePacket() error {
 	packet := Handshake{}
-	err := c.readWholePacket()
-	fmt.Println("\nEND")
-	os.Exit(0)
+
 	packet.PacketLength = c.getInt(TypeFixedInt, 3)
 	packet.SequenceID = c.getInt(TypeFixedInt, 1)
 	packet.ProtocolVersion = c.getInt(TypeFixedInt, 1)
 	packet.ServerVersion = c.getString(TypeNullTerminatedString, 0)
 	packet.ThreadID = c.getInt(TypeFixedInt, 4)
-	packet.AuthPluginDataPart1 = c.getBytes(8).Bytes()
+	packet.AuthPluginDataPart1 = c.readBytes(8)
 	c.discardBytes(1)
-	packet.CapabilityFlags1 = c.getBytes(2).Bytes()
+	packet.CapabilityFlags1 = c.readBytes(2)
 	packet.Charset = c.getInt(TypeFixedInt, 1)
-	packet.StatusFlags = c.getBytes(2).Bytes()
+	packet.StatusFlags = c.readBytes(2)
 	c.decodeStatusFlags(&packet)
-	packet.CapabilityFlags2 = c.getBytes(2).Bytes()
+	packet.CapabilityFlags2 = c.readBytes(2)
 	c.decodeCapabilityFlags(&packet)
 	packet.AuthPluginDataLength = c.getInt(TypeFixedInt, 1)
 	c.discardBytes(10)
-	packet.AuthPluginDataPart2 = c.getBytes(packet.AuthPluginDataLength - 8).Bytes()
+	packet.AuthPluginDataPart2 = c.readBytes(packet.AuthPluginDataLength - 8)
 	packet.AuthPluginName = c.getString(TypeNullTerminatedString, 0)
+
+	if c.scanner.Err() != nil {
+		return c.scanner.Err()
+	}
+
 	c.Handshake = &packet
 
-	return err
+	return nil
 }
 
 func (c *Conn) encodeHandshakeResponse() []byte {
@@ -128,13 +129,13 @@ func (c *Conn) encodeHandshakeResponse() []byte {
 	buf := bytes.NewBuffer(make([]byte, 0))
 
 	// Capabilities flag.
-	//var cf capability = 0
+	var cf capability = 0
 
 	// Write Capability Flags.
-	//buf.Write([]byte(cf))
+	buf.Write([]byte(cf))
 
 	// Write MaxPacketSize
-	//buf.Write()
+	buf.Write(MaxPacketSize)
 
 	// Write CharacterSet
 	cs := make([]byte, 2)
@@ -148,7 +149,7 @@ func (c *Conn) encodeHandshakeResponse() []byte {
 	u := append([]byte(hr.Username), NullByte)
 	buf.Write(u)
 
-	salt := append(c.Handshake.AuthPluginDataPart1, c.Handshake.AuthPluginDataPart2...)
+	salt := append(c.Handshake.AuthPluginDataPart1.Bytes(), c.Handshake.AuthPluginDataPart2.Bytes()...)
 	ar := c.cachingSha2Auth(salt, []byte(hr.AuthResponse))
 	if hr.ClientFlag.PluginAuthLenEncClientData {
 		buf.Write(c.encLenEncInt(uint64(len(ar))))

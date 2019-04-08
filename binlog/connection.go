@@ -41,6 +41,16 @@ type Config struct {
 	Timeout    time.Duration
 }
 
+func splitByBytesFunc(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	//fmt.Printf("DATA: %08b\n atEOF: %08b\n", data, atEOF)
+	if atEOF {
+		return 0, nil, nil
+	}
+
+	//fmt.Printf("RETURN DATA: %+v\n", data[:1])
+	return 1, data[:1], nil
+}
+
 func newBinlogConfig(dsn string) (*Config, error) {
 	var err error
 
@@ -55,6 +65,7 @@ type Conn struct {
 	tcpConn   *net.TCPConn
 	Handshake *Handshake
 	buffer    *bufio.ReadWriter
+	scanner   *bufio.Scanner
 }
 
 func newBinlogConn(config *Config) Conn {
@@ -99,11 +110,14 @@ func (d Driver) Open(dsn string) (driver.Conn, error) {
 	}
 
 	err = c.decodeHandshakePacket()
-	fmt.Printf("%+v", c.Handshake)
-	//b := c.encodeHandshakeResponse()
-	//fmt.Printf("%08b\n%d\n%s", b, b, b)
+	if err != nil {
+		return nil, err
+	}
 
-	//_, err = c.tcpConn.Write(b)
+	err = c.encodeHandshakeResponse()
+	if err != nil {
+		return nil, err
+	}
 
 	return c, err
 }
@@ -112,47 +126,48 @@ func init() {
 	sql.Register("mysql-binlog", &Driver{})
 }
 
-func (c *Conn) getPacketLength() uint64 {
-	l := c.getInt(TypeFixedInt, 3)
-	return l
-}
-
-func (c *Conn) readWholePacket() (*bytes.Buffer, error) {
-	pl := c.getPacketLength()
-	b, err := c.readBytes(pl - 3)
-	return b, err
-}
-
-func (c *Conn) readBytes(l uint64) (*bytes.Buffer, error) {
+func (c *Conn) readBytes(l uint64) *bytes.Buffer {
 	if c.buffer == nil {
 		c.buffer = bufio.NewReadWriter(
 			bufio.NewReader(c.tcpConn),
 			bufio.NewWriter(c.tcpConn),
 		)
+
+		c.scanner = bufio.NewScanner(c.buffer.Reader)
+		c.scanner.Split(splitByBytesFunc)
 	}
 
-	b := make([]byte, l)
-	_, err := c.buffer.Read(b)
-	if err != nil {
-		return nil, err
+	b := make([]byte, 0)
+	for i := uint64(0); i < l; i++ {
+		c.scanner.Scan()
+		b = append(b, c.scanner.Bytes()...)
 	}
 
-	return bytes.NewBuffer(b), nil
-}
-
-func (c *Conn) getBytes(l uint64) *bytes.Buffer {
-	b := make([]byte, l)
-	_, _ = c.buffer.Read(b)
 	return bytes.NewBuffer(b)
 }
 
 func (c *Conn) getBytesUntilNull() *bytes.Buffer {
-	s, _ := c.buffer.ReadBytes(NullByte)
-	return bytes.NewBuffer(s)
+
+	l := uint64(1)
+	s := c.readBytes(l)
+	b := s.Bytes()
+
+	for true {
+		if uint64(s.Len()) != l || s.Bytes()[0] == NullByte {
+			break
+		}
+
+		s = c.readBytes(uint64(l))
+		b = append(b, s.Bytes()...)
+	}
+
+	return bytes.NewBuffer(b[:len(b)-1])
 }
 
 func (c *Conn) discardBytes(l int) {
-	_, _ = c.buffer.Discard(l)
+	for i := 0; i < l; i++ {
+		c.scanner.Scan()
+	}
 }
 
 func (c *Conn) getInt(t int, l uint64) uint64 {
@@ -185,16 +200,16 @@ func (c *Conn) getString(t int, l uint64) string {
 
 func (c *Conn) decNullTerminatedString() string {
 	b := c.getBytesUntilNull()
-	return string(b.Bytes())
+	return b.String()
 }
 
 func (c *Conn) decFixedString(l uint64) string {
-	b, _ := c.readBytes(l)
+	b := c.readBytes(l)
 	return b.String()
 }
 
 func (c *Conn) decFixedInt(l uint64) uint64 {
-	b, _ := c.readBytes(l)
+	b := c.readBytes(l)
 
 	var i uint64
 	i, _ = binary.ReadUvarint(b)
