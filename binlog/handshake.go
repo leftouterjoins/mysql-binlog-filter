@@ -128,18 +128,19 @@ func (c *Conn) writeHandshakeResponse() error {
 	hr := c.NewHandshakeResponse()
 	cf := c.structToBitmask(hr.ClientFlag)
 	c.putBytes(cf)
-	c.putInt(TypeFixedInt, MaxPacketSize, 4)
+	c.putInt(TypeFixedInt, hr.MaxPacketSize, 4)
 	c.putInt(TypeFixedInt, hr.CharacterSet, 1)
 	c.putNullBytes(23)
 	c.putString(TypeNullTerminatedString, hr.Username)
 
 	salt := append(c.Handshake.AuthPluginDataPart1.Bytes(), c.Handshake.AuthPluginDataPart2.Bytes()...)
 	ar := c.cachingSha2Auth(salt, []byte(hr.AuthResponse))
+	hr.AuthResponseLength = uint64(len(ar))
 	if hr.ClientFlag.PluginAuthLenEncClientData {
-		c.putInt(TypeLenEncInt, uint64(len(ar)), 0)
+		c.putInt(TypeLenEncInt, hr.AuthResponseLength, 0)
 		c.putBytes(ar)
 	} else if hr.ClientFlag.SecureConnection {
-		c.putInt(TypeFixedInt, uint64(len(ar)), 1)
+		c.putInt(TypeFixedInt, hr.AuthResponseLength, 1)
 		c.putBytes(ar)
 	} else {
 		c.putString(TypeNullTerminatedString, c.Config.Pass)
@@ -150,9 +151,17 @@ func (c *Conn) writeHandshakeResponse() error {
 		c.putString(TypeNullTerminatedString, hr.Database)
 	}
 
+	// Set type of auth plugin based on if it is at the end of the packet.
+	var t int
+	if hr.KeyValues != nil {
+		t = TypeNullTerminatedString
+	} else {
+		t = TypeRestOfPacketString
+	}
+
 	// Write auth plugin
 	if hr.ClientFlag.PluginAuth {
-		c.putString(TypeNullTerminatedString, hr.ClientPluginName)
+		c.putString(t, hr.ClientPluginName)
 	}
 
 	if c.Flush() != nil {
@@ -180,13 +189,13 @@ func (c *Conn) NewHandshakeResponse() *HandshakeResponse {
 			IgnoreSigpipe:              false,
 			Transactions:               true,
 			LegacyProtocol41:           false,
-			SecureConnection:           false,
+			SecureConnection:           true,
 			MultiStatements:            false,
 			MultiResults:               false,
 			PSMultiResults:             true,
-			PluginAuth:                 false,
+			PluginAuth:                 true,
 			ConnectAttrs:               false,
-			PluginAuthLenEncClientData: true,
+			PluginAuthLenEncClientData: false,
 			CanHandleExpiredPasswords:  false,
 			SessionTrack:               false,
 			DeprecateEOF:               false,
@@ -197,7 +206,7 @@ func (c *Conn) NewHandshakeResponse() *HandshakeResponse {
 		MaxPacketSize:      MaxPacketSize,
 		CharacterSet:       45,
 		Username:           c.Config.User,
-		AuthResponseLength: uint64(len(c.Config.Pass)),
+		AuthResponseLength: 0,
 		AuthResponse:       c.Config.Pass,
 		Database:           c.Config.Database,
 		ClientPluginName:   c.Handshake.AuthPluginName,

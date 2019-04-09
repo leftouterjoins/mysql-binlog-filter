@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"math/bits"
 	"net"
 	"reflect"
 	"strings"
@@ -22,6 +21,7 @@ const TypeNullTerminatedString = int(0)
 const TypeFixedString = int(1)
 const TypeFixedInt = int(2)
 const TypeLenEncInt = int(3)
+const TypeRestOfPacketString = int(4)
 
 // Integer Maximums
 const MaxUint8 = 1<<8 - 1
@@ -75,7 +75,7 @@ type Conn struct {
 func newBinlogConn(config *Config) Conn {
 	return Conn{
 		Config:     config,
-		sequenceId: 0,
+		sequenceId: 1,
 	}
 }
 
@@ -302,7 +302,7 @@ func (c *Conn) structToBitmask(s interface{}) []byte {
 
 	l := uint64(math.Ceil(float64(fC) / 8.0))
 	b := make([]byte, 8)
-	binary.BigEndian.PutUint64(b, bits.Reverse64(m))
+	binary.LittleEndian.PutUint64(b, m)
 
 	switch {
 	case l > 4: // 64 bits
@@ -326,6 +326,8 @@ func (c *Conn) putString(t int, v string) uint64 {
 		b = c.encFixedString(v)
 	case TypeNullTerminatedString:
 		b = c.encNullTerminatedString(v)
+	case TypeRestOfPacketString:
+		b = c.encRestOfPacketString(v)
 	}
 
 	l, err := c.writeBuf.Write(b)
@@ -342,6 +344,11 @@ func (c *Conn) encNullTerminatedString(v string) []byte {
 
 func (c *Conn) encFixedString(v string) []byte {
 	return []byte(v)
+}
+
+func (c *Conn) encRestOfPacketString(v string) []byte {
+	s := c.encFixedString(v)
+	return s
 }
 
 func (c *Conn) putInt(t int, v uint64, l uint64) uint64 {
@@ -402,7 +409,7 @@ func (c *Conn) Flush() error {
 }
 
 func (c *Conn) addHeader() *bytes.Buffer {
-	pl := uint64(c.writeBuf.Len()) + 4
+	pl := uint64(c.writeBuf.Len())
 	sId := uint64(c.sequenceId)
 	c.sequenceId++
 
@@ -416,13 +423,4 @@ func (c *Conn) setupWriteBuffer() {
 	if c.writeBuf == nil {
 		c.writeBuf = bytes.NewBuffer(nil)
 	}
-}
-
-func Reverse(s string) string {
-	var b strings.Builder
-	b.Grow(len(s))
-	for i := len(s) - 1; i >= 0; i-- {
-		b.WriteByte(s[i])
-	}
-	return b.String()
 }
