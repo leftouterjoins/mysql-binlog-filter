@@ -2,7 +2,6 @@ package binlog
 
 import (
 	"bytes"
-	"encoding/binary"
 )
 
 type Capabilities struct {
@@ -115,8 +114,9 @@ func (c *Conn) decodeHandshakePacket() error {
 	packet.AuthPluginDataPart2 = c.readBytes(packet.AuthPluginDataLength - 8)
 	packet.AuthPluginName = c.getString(TypeNullTerminatedString, 0)
 
-	if c.scanner.Err() != nil {
-		return c.scanner.Err()
+	err := c.scanner.Err()
+	if err != nil {
+		return err
 	}
 
 	c.Handshake = &packet
@@ -124,70 +124,50 @@ func (c *Conn) decodeHandshakePacket() error {
 	return nil
 }
 
-func (c *Conn) encodeHandshakeResponse() []byte {
-	hr := NewHandshakeResponse()
-	buf := bytes.NewBuffer(make([]byte, 0))
-
-	// Capabilities flag.
-	var cf capability = 0
-
-	// Write Capability Flags.
-	buf.Write([]byte(cf))
-
-	// Write MaxPacketSize
-	buf.Write(MaxPacketSize)
-
-	// Write CharacterSet
-	cs := make([]byte, 2)
-	binary.LittleEndian.PutUint16(cs, uint16(hr.CharacterSet))
-	buf.Write(cs[:1])
-
-	// Write Filler
-	buf.Write(make([]byte, 23))
-
-	// Write username
-	u := append([]byte(hr.Username), NullByte)
-	buf.Write(u)
+func (c *Conn) writeHandshakeResponse() error {
+	hr := c.NewHandshakeResponse()
+	cf := c.structToBitmask(hr.ClientFlag)
+	c.putBytes(cf)
+	c.putInt(TypeFixedInt, MaxPacketSize, 4)
+	c.putInt(TypeFixedInt, hr.CharacterSet, 1)
+	c.putNullBytes(23)
+	c.putString(TypeNullTerminatedString, hr.Username)
 
 	salt := append(c.Handshake.AuthPluginDataPart1.Bytes(), c.Handshake.AuthPluginDataPart2.Bytes()...)
 	ar := c.cachingSha2Auth(salt, []byte(hr.AuthResponse))
 	if hr.ClientFlag.PluginAuthLenEncClientData {
-		buf.Write(c.encLenEncInt(uint64(len(ar))))
-		buf.Write(ar)
+		c.putInt(TypeLenEncInt, uint64(len(ar)), 0)
+		c.putBytes(ar)
 	} else if hr.ClientFlag.SecureConnection {
-		l := make([]byte, 2)
-		binary.LittleEndian.PutUint16(l, uint16(len(ar)))
-		buf.Write(l[:1])
-		buf.Write(ar)
+		c.putInt(TypeFixedInt, uint64(len(ar)), 1)
+		c.putBytes(ar)
 	} else {
-		buf.Write(append(ar, NullByte))
+		c.putString(TypeNullTerminatedString, c.Config.Pass)
 	}
 
 	// Write database name
 	if hr.ClientFlag.ConnectWithDB {
-		buf.Write(append([]byte(hr.Database), NullByte))
+		c.putString(TypeNullTerminatedString, hr.Database)
 	}
 
 	// Write auth plugin
 	if hr.ClientFlag.PluginAuth {
-		buf.Write([]byte(hr.ClientPluginName))
+		c.putString(TypeNullTerminatedString, hr.ClientPluginName)
 	}
 
-	pl := make([]byte, 4)
-	binary.LittleEndian.PutUint32(pl, uint32(buf.Len()))
-	p := append(pl[:3], 1)
-	p = append(p, buf.Bytes()...)
-	buf = bytes.NewBuffer(p)
+	if c.Flush() != nil {
+		return c.Flush()
+	}
 
-	return buf.Bytes()
+	return nil
 }
 
-func NewHandshakeResponse() *HandshakeResponse {
+func (c *Conn) NewHandshakeResponse() *HandshakeResponse {
 	return &HandshakeResponse{
 		ClientFlag: &Capabilities{
 			LongPassword:               true,
 			FoundRows:                  true,
-			LongFlag:                   true,
+			LongFlag:                   false,
 			ConnectWithDB:              true,
 			NoSchema:                   false,
 			Compress:                   false,
@@ -200,27 +180,27 @@ func NewHandshakeResponse() *HandshakeResponse {
 			IgnoreSigpipe:              false,
 			Transactions:               true,
 			LegacyProtocol41:           false,
-			SecureConnection:           true,
+			SecureConnection:           false,
 			MultiStatements:            false,
 			MultiResults:               false,
 			PSMultiResults:             true,
 			PluginAuth:                 false,
 			ConnectAttrs:               false,
-			PluginAuthLenEncClientData: false,
+			PluginAuthLenEncClientData: true,
 			CanHandleExpiredPasswords:  false,
-			SessionTrack:               true,
-			DeprecateEOF:               true,
+			SessionTrack:               false,
+			DeprecateEOF:               false,
 			SSLVerifyServerCert:        false,
-			OptionalResultSetMetadata:  true,
-			RememberOptions:            true,
+			OptionalResultSetMetadata:  false,
+			RememberOptions:            false,
 		},
 		MaxPacketSize:      MaxPacketSize,
 		CharacterSet:       45,
-		Username:           "",
-		AuthResponseLength: 0,
-		AuthResponse:       "",
-		Database:           "",
-		ClientPluginName:   "",
+		Username:           c.Config.User,
+		AuthResponseLength: uint64(len(c.Config.Pass)),
+		AuthResponse:       c.Config.Pass,
+		Database:           c.Config.Database,
+		ClientPluginName:   c.Handshake.AuthPluginName,
 		KeyValues:          nil,
 	}
 }

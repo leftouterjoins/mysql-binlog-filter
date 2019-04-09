@@ -7,9 +7,13 @@ import (
 	"database/sql/driver"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"math"
+	"math/bits"
 	"net"
 	"reflect"
+	"strings"
 	"time"
 )
 
@@ -17,8 +21,7 @@ import (
 const TypeNullTerminatedString = int(0)
 const TypeFixedString = int(1)
 const TypeFixedInt = int(2)
-
-//const TypeLenEncodedInt = int(3)
+const TypeLenEncInt = int(3)
 
 // Integer Maximums
 const MaxUint8 = 1<<8 - 1
@@ -42,12 +45,10 @@ type Config struct {
 }
 
 func splitByBytesFunc(data []byte, atEOF bool) (advance int, token []byte, err error) {
-	//fmt.Printf("DATA: %08b\n atEOF: %08b\n", data, atEOF)
 	if atEOF {
-		return 0, nil, nil
+		return 0, nil, errors.New("scanner found EOF")
 	}
 
-	//fmt.Printf("RETURN DATA: %+v\n", data[:1])
 	return 1, data[:1], nil
 }
 
@@ -61,16 +62,20 @@ func newBinlogConfig(dsn string) (*Config, error) {
 }
 
 type Conn struct {
-	Config    *Config
-	tcpConn   *net.TCPConn
-	Handshake *Handshake
-	buffer    *bufio.ReadWriter
-	scanner   *bufio.Scanner
+	Config     *Config
+	tcpConn    *net.TCPConn
+	Handshake  *Handshake
+	buffer     *bufio.ReadWriter
+	scanner    *bufio.Scanner
+	err        error
+	sequenceId uint64
+	writeBuf   *bytes.Buffer
 }
 
 func newBinlogConn(config *Config) Conn {
 	return Conn{
-		Config: config,
+		Config:     config,
+		sequenceId: 0,
 	}
 }
 
@@ -114,7 +119,7 @@ func (d Driver) Open(dsn string) (driver.Conn, error) {
 		return nil, err
 	}
 
-	err = c.encodeHandshakeResponse()
+	err = c.writeHandshakeResponse()
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +152,6 @@ func (c *Conn) readBytes(l uint64) *bytes.Buffer {
 }
 
 func (c *Conn) getBytesUntilNull() *bytes.Buffer {
-
 	l := uint64(1)
 	s := c.readBytes(l)
 	b := s.Bytes()
@@ -161,7 +165,7 @@ func (c *Conn) getBytesUntilNull() *bytes.Buffer {
 		b = append(b, s.Bytes()...)
 	}
 
-	return bytes.NewBuffer(b[:len(b)-1])
+	return bytes.NewBuffer(b)
 }
 
 func (c *Conn) discardBytes(l int) {
@@ -200,7 +204,7 @@ func (c *Conn) getString(t int, l uint64) string {
 
 func (c *Conn) decNullTerminatedString() string {
 	b := c.getBytesUntilNull()
-	return b.String()
+	return strings.TrimRight(b.String(), string(NullByte))
 }
 
 func (c *Conn) decFixedString(l uint64) string {
@@ -209,18 +213,16 @@ func (c *Conn) decFixedString(l uint64) string {
 }
 
 func (c *Conn) decFixedInt(l uint64) uint64 {
-	b := c.readBytes(l)
-
 	var i uint64
+	b := c.readBytes(l)
 	i, _ = binary.ReadUvarint(b)
-
 	return i
 }
 
-func (c *Conn) encFixedLenInt(l uint64, v uint64) []byte {
-	b := make([]byte, 4)
+func (c *Conn) encFixedLenInt(v uint64, l uint64) []byte {
+	b := make([]byte, 8)
 	binary.LittleEndian.PutUint64(b, v)
-	return b[:(l - 1)]
+	return b[:l]
 }
 
 func (c *Conn) encLenEncInt(v uint64) []byte {
@@ -247,7 +249,9 @@ func (c *Conn) encLenEncInt(v uint64) []byte {
 		binary.LittleEndian.PutUint64(b, uint64(v))
 	}
 
-	b = append(prefix, b...)
+	if len(b) > 1 {
+		b = append(prefix, b...)
+	}
 	return b
 }
 
@@ -281,4 +285,144 @@ func (c *Conn) bitmaskToStruct(b []byte, s interface{}) interface{} {
 	}
 
 	return v.Interface()
+}
+
+func (c *Conn) structToBitmask(s interface{}) []byte {
+	t := reflect.TypeOf(s).Elem()
+	sV := reflect.ValueOf(s).Elem()
+	fC := uint(t.NumField())
+	m := uint64(0)
+	for i := uint(0); i < fC; i++ {
+		f := sV.Field(int(i))
+		v := f.Bool()
+		if v {
+			m |= 1 << i
+		}
+	}
+
+	l := uint64(math.Ceil(float64(fC) / 8.0))
+	b := make([]byte, 8)
+	binary.BigEndian.PutUint64(b, bits.Reverse64(m))
+
+	switch {
+	case l > 4: // 64 bits
+		b = b[:8]
+	case l > 2: // 32 bits
+		b = b[:4]
+	case l > 1: // 16 bits
+		b = b[:2]
+	default: // 8 bits
+		b = b[:1]
+	}
+
+	return b
+}
+
+func (c *Conn) putString(t int, v string) uint64 {
+	b := make([]byte, 0)
+
+	switch t {
+	case TypeFixedString:
+		b = c.encFixedString(v)
+	case TypeNullTerminatedString:
+		b = c.encNullTerminatedString(v)
+	}
+
+	l, err := c.writeBuf.Write(b)
+	if err != nil {
+		c.err = err
+	}
+
+	return uint64(l)
+}
+
+func (c *Conn) encNullTerminatedString(v string) []byte {
+	return append([]byte(v), NullByte)
+}
+
+func (c *Conn) encFixedString(v string) []byte {
+	return []byte(v)
+}
+
+func (c *Conn) putInt(t int, v uint64, l uint64) uint64 {
+	c.setupWriteBuffer()
+
+	b := make([]byte, 0)
+
+	switch t {
+	case TypeFixedInt:
+		b = c.encFixedLenInt(v, l)
+	case TypeLenEncInt:
+		b = c.encLenEncInt(v)
+	}
+
+	n, err := c.writeBuf.Write(b)
+	if err != nil {
+		c.err = err
+	}
+
+	return uint64(n)
+}
+
+func (c *Conn) putNullBytes(n uint64) uint64 {
+	c.setupWriteBuffer()
+
+	b := make([]byte, n)
+	l, err := c.writeBuf.Write(b)
+	if err != nil {
+		c.err = err
+	}
+
+	return uint64(l)
+}
+
+func (c *Conn) putBytes(v []byte) uint64 {
+	c.setupWriteBuffer()
+
+	l, err := c.writeBuf.Write(v)
+	if err != nil {
+		c.err = err
+	}
+
+	return uint64(l)
+}
+
+func (c *Conn) Flush() error {
+	if c.err != nil {
+		return c.err
+	}
+
+	c.writeBuf = c.addHeader()
+	_, _ = c.buffer.Write(c.writeBuf.Bytes())
+	if c.buffer.Flush() != nil {
+		return c.buffer.Flush()
+	}
+
+	return nil
+}
+
+func (c *Conn) addHeader() *bytes.Buffer {
+	pl := uint64(c.writeBuf.Len()) + 4
+	sId := uint64(c.sequenceId)
+	c.sequenceId++
+
+	plB := c.encFixedLenInt(pl, 3)
+	sIdB := c.encFixedLenInt(sId, 1)
+
+	return bytes.NewBuffer(append(append(plB, sIdB...), c.writeBuf.Bytes()...))
+}
+
+func (c *Conn) setupWriteBuffer() {
+	if c.writeBuf == nil {
+		c.writeBuf = bytes.NewBuffer(nil)
+	}
+}
+
+func Reverse(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := len(s) - 1; i >= 0; i-- {
+		b.WriteByte(s[i])
+	}
+	return b.String()
 }
