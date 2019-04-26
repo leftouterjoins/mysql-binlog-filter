@@ -133,18 +133,8 @@ func (c *Conn) writeHandshakeResponse() error {
 	c.putNullBytes(23)
 	c.putString(TypeNullTerminatedString, hr.Username)
 
-	salt := append(c.Handshake.AuthPluginDataPart1.Bytes(), c.Handshake.AuthPluginDataPart2.Bytes()...)
-	ar := c.cachingSha2Auth(salt, []byte(hr.AuthResponse))
-	hr.AuthResponseLength = uint64(len(ar))
-	if hr.ClientFlag.PluginAuthLenEncClientData {
-		c.putInt(TypeLenEncInt, hr.AuthResponseLength, 0)
-		c.putBytes(ar)
-	} else if hr.ClientFlag.SecureConnection {
-		c.putInt(TypeFixedInt, hr.AuthResponseLength, 1)
-		c.putBytes(ar)
-	} else {
-		c.putString(TypeNullTerminatedString, c.Config.Pass)
-	}
+	// Perform authentication
+	c.authenticate(hr)
 
 	// Write database name
 	if hr.ClientFlag.ConnectWithDB {

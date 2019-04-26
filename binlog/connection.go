@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"math"
 	"net"
 	"reflect"
@@ -55,8 +56,13 @@ func splitByBytesFunc(data []byte, atEOF bool) (advance int, token []byte, err e
 func newBinlogConfig(dsn string) (*Config, error) {
 	var err error
 
+	b, err := ioutil.ReadFile(dsn)
+	if err != nil {
+		return nil, err
+	}
+
 	config := Config{}
-	err = json.Unmarshal([]byte(dsn), &config)
+	err = json.Unmarshal(b, &config)
 
 	return &config, err
 }
@@ -124,6 +130,7 @@ func (d Driver) Open(dsn string) (driver.Conn, error) {
 		return nil, err
 	}
 
+	fmt.Printf("%+v\n", c.Handshake)
 	return c, err
 }
 
