@@ -7,7 +7,7 @@ import (
 
 func (c *Conn) authenticate(hr *HandshakeResponse) {
 	switch c.Handshake.AuthPluginName {
-	case "mysql_native_password" :
+	case "mysql_native_password":
 		c.doSha1Auth(hr)
 	case "caching_sha2_password":
 		c.doSha2Auth(hr)
@@ -65,4 +65,3 @@ func (c *Conn) sha256Hash(word []byte) []byte {
 	s.Write(word)
 	return s.Sum(nil)
 }
-
