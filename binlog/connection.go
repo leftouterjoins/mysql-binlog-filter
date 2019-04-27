@@ -68,14 +68,15 @@ func newBinlogConfig(dsn string) (*Config, error) {
 }
 
 type Conn struct {
-	Config     *Config
-	tcpConn    *net.TCPConn
-	Handshake  *Handshake
-	buffer     *bufio.ReadWriter
-	scanner    *bufio.Scanner
-	err        error
-	sequenceId uint64
-	writeBuf   *bytes.Buffer
+	Config            *Config
+	tcpConn           *net.TCPConn
+	Handshake         *Handshake
+	HandshakeResponse *HandshakeResponse
+	buffer            *bufio.ReadWriter
+	scanner           *bufio.Scanner
+	err               error
+	sequenceId        uint64
+	writeBuf          *bytes.Buffer
 }
 
 func newBinlogConn(config *Config) Conn {
@@ -131,12 +132,16 @@ func (d Driver) Open(dsn string) (driver.Conn, error) {
 		return nil, err
 	}
 
-	packet, err := c.decodeAuthResponsePacket()
-	if err != nil {
-		return nil, err
-	}
+	// _, err = c.decodeAuthResponsePacket()
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	fmt.Printf("%+v\n", packet)
+	// 	err = c.writeAuthSwitchPacket(packet)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+
 	return c, err
 }
 

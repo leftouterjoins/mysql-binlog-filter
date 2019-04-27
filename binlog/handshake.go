@@ -128,6 +128,7 @@ func (c *Conn) decodeHandshakePacket() error {
 
 func (c *Conn) writeHandshakeResponse() error {
 	hr := c.NewHandshakeResponse()
+	c.HandshakeResponse = hr
 	cf := c.structToBitmask(hr.ClientFlag)
 	c.putBytes(cf)
 	c.putInt(TypeFixedInt, hr.MaxPacketSize, 4)
@@ -136,7 +137,9 @@ func (c *Conn) writeHandshakeResponse() error {
 	c.putString(TypeNullTerminatedString, hr.Username)
 
 	// Perform authentication
-	c.authenticate(hr)
+	salt := append(c.Handshake.AuthPluginDataPart1.Bytes(), c.Handshake.AuthPluginDataPart2.Bytes()...)
+	password := []byte(hr.AuthResponse)
+	c.authenticate(salt, password)
 
 	// Write database name
 	if hr.ClientFlag.ConnectWithDB {
@@ -154,6 +157,8 @@ func (c *Conn) writeHandshakeResponse() error {
 	// Write auth plugin
 	if hr.ClientFlag.PluginAuth {
 		c.putString(t, hr.ClientPluginName)
+
+		c.putNullBytes(1)
 	}
 
 	fmt.Printf("%+v\n", hr)
