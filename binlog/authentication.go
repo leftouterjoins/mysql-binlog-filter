@@ -1,25 +1,54 @@
 package binlog
 
 import (
+	"bytes"
 	"crypto/sha1"
 	"crypto/sha256"
+	"fmt"
 )
 
+type AuthResponse struct {
+	PacketLength   uint64
+	SequenceID     uint64
+	Status         uint64
+	PluginName     string
+	AuthPluginData *bytes.Buffer
+}
+
+func (c *Conn) decodeAuthResponsePacket() (*AuthResponse, error) {
+	packet := AuthResponse{}
+
+	packet.PacketLength = c.getInt(TypeFixedInt, 3)
+	packet.SequenceID = c.getInt(TypeFixedInt, 1)
+	packet.Status = c.getInt(TypeFixedInt, 1)
+	packet.PluginName = c.getString(TypeNullTerminatedString, 0)
+	packet.AuthPluginData = c.readBytes(20)
+
+	err := c.scanner.Err()
+	if err != nil {
+		return nil, err
+	}
+
+	return &packet, err
+}
+
+func (c *Conn) writeAuthSwitchPacket() {
+
+}
+
 func (c *Conn) authenticate(hr *HandshakeResponse) {
+	var ar []byte
+	salt := append(c.Handshake.AuthPluginDataPart1.Bytes(), c.Handshake.AuthPluginDataPart2.Bytes()...)
+	password := []byte(hr.AuthResponse)
+	fmt.Println(hr.AuthResponse)
+
 	switch c.Handshake.AuthPluginName {
 	case "mysql_native_password":
-		c.doSha1Auth(hr)
+		ar = c.nativeSha1Auth(salt, password)
 	case "caching_sha2_password":
-		c.doSha2Auth(hr)
+		ar = c.cachingSha2Auth(salt, password)
 	}
-}
 
-func (c *Conn) doSha1Auth(hr *HandshakeResponse) {
-}
-
-func (c *Conn) doSha2Auth(hr *HandshakeResponse) {
-	salt := append(c.Handshake.AuthPluginDataPart1.Bytes(), c.Handshake.AuthPluginDataPart2.Bytes()...)
-	ar := c.cachingSha2Auth(salt, []byte(hr.AuthResponse))
 	hr.AuthResponseLength = uint64(len(ar))
 	if hr.ClientFlag.PluginAuthLenEncClientData {
 		c.putInt(TypeLenEncInt, hr.AuthResponseLength, 0)
@@ -32,9 +61,16 @@ func (c *Conn) doSha2Auth(hr *HandshakeResponse) {
 	}
 }
 
-func (c *Conn) nativeSha1Auth() {
-	// SHA1(password) XOR SHA1("20-bytes random data from server" <concat> SHA1(SHA1(password)))
+func (c *Conn) nativeSha1Auth(salt []byte, password []byte) []byte {
+	pHash := c.sha1Hash(password)
+	pHashHash := c.sha1Hash(pHash)
+	spHash := c.sha1Hash(append(salt, pHashHash...))
 
+	for i := range pHash {
+		pHash[i] ^= spHash[i]
+	}
+
+	return pHash
 }
 
 func (c *Conn) cachingSha2Auth(salt []byte, password []byte) []byte {

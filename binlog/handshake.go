@@ -2,6 +2,7 @@ package binlog
 
 import (
 	"bytes"
+	"fmt"
 )
 
 type Capabilities struct {
@@ -111,7 +112,8 @@ func (c *Conn) decodeHandshakePacket() error {
 	c.decodeCapabilityFlags(&packet)
 	packet.AuthPluginDataLength = c.getInt(TypeFixedInt, 1)
 	c.discardBytes(10)
-	packet.AuthPluginDataPart2 = c.readBytes(packet.AuthPluginDataLength - 8)
+	p1l := uint64(packet.AuthPluginDataPart1.Len())
+	packet.AuthPluginDataPart2 = c.readBytes(packet.AuthPluginDataLength - p1l)
 	packet.AuthPluginName = c.getString(TypeNullTerminatedString, 0)
 
 	err := c.scanner.Err()
@@ -153,6 +155,8 @@ func (c *Conn) writeHandshakeResponse() error {
 	if hr.ClientFlag.PluginAuth {
 		c.putString(t, hr.ClientPluginName)
 	}
+
+	fmt.Printf("%+v\n", hr)
 
 	if c.Flush() != nil {
 		return c.Flush()

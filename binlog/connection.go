@@ -110,14 +110,15 @@ func (d Driver) Open(dsn string) (driver.Conn, error) {
 	dialer := net.Dialer{Timeout: c.Config.Timeout}
 	addr := fmt.Sprintf("%s:%d", c.Config.Host, c.Config.Port)
 	t, err := dialer.Dial("tcp", addr)
-	c.tcpConn = t.(*net.TCPConn)
 
 	if err != nil {
 		netErr, ok := err.(net.Error)
-		if ok && netErr.Temporary() {
+		if ok && !netErr.Temporary() {
 			fmt.Printf("Error: %s", netErr.Error())
 			return nil, err
 		}
+	} else {
+		c.tcpConn = t.(*net.TCPConn)
 	}
 
 	err = c.decodeHandshakePacket()
@@ -130,7 +131,12 @@ func (d Driver) Open(dsn string) (driver.Conn, error) {
 		return nil, err
 	}
 
-	fmt.Printf("%+v\n", c.Handshake)
+	packet, err := c.decodeAuthResponsePacket()
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Printf("%+v\n", packet)
 	return c, err
 }
 
@@ -222,8 +228,37 @@ func (c *Conn) decFixedString(l uint64) string {
 func (c *Conn) decFixedInt(l uint64) uint64 {
 	var i uint64
 	b := c.readBytes(l)
-	i, _ = binary.ReadUvarint(b)
+	if l <= 2 {
+		var x uint16
+		pb := c.padBytes(2, b.Bytes())
+		br := bytes.NewReader(pb)
+		_ = binary.Read(br, binary.LittleEndian, &x)
+		i = uint64(x)
+	} else if l <= 4 {
+		var x uint32
+		pb := c.padBytes(4, b.Bytes())
+		br := bytes.NewReader(pb)
+		_ = binary.Read(br, binary.LittleEndian, &x)
+		i = uint64(x)
+	} else if l <= 8 {
+		var x uint64
+		pb := c.padBytes(8, b.Bytes())
+		br := bytes.NewReader(pb)
+		_ = binary.Read(br, binary.LittleEndian, &x)
+		i = x
+	}
+
 	return i
+}
+
+func (c *Conn) padBytes(l int, b []byte) []byte {
+	bl := len(b)
+	pl := l - bl
+	for i := 0; i < pl; i++ {
+		b = append(b, NullByte)
+	}
+
+	return b
 }
 
 func (c *Conn) encFixedLenInt(v uint64, l uint64) []byte {
