@@ -6,7 +6,7 @@ services:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: root
     ports:
-      - "3316:3306"
+      - "3317:3306"
     command: "--default-authentication-plugin=mysql_native_password"
     restart: always
   mysql56:
@@ -15,6 +15,6 @@ services:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: root
     ports:
-      - "3317:3306"
+      - "3316:3306"
     command: "--default-authentication-plugin=mysql_native_password"
     restart: always

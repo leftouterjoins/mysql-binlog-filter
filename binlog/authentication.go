@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"crypto/sha256"
-	"fmt"
 )
 
 type AuthResponsePacket struct {
@@ -52,7 +51,6 @@ func (c *Conn) authenticate(salt []byte, password []byte) {
 	case "mysql_native_password":
 		ar = c.nativeSha1Auth(salt, password)
 	case "caching_sha2_password":
-		fmt.Println(len(salt))
 		ar = c.cachingSha2Auth(salt, password)
 	}
 
@@ -70,6 +68,10 @@ func (c *Conn) authenticate(salt []byte, password []byte) {
 }
 
 func (c *Conn) nativeSha1Auth(salt []byte, password []byte) []byte {
+	if len(password) < 1 {
+		return nil
+	}
+
 	pHash := c.sha1Hash(password)
 	pHashHash := c.sha1Hash(pHash)
 	spHash := c.sha1Hash(append(salt, pHashHash...))

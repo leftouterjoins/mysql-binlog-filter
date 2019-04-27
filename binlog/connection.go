@@ -132,16 +132,6 @@ func (d Driver) Open(dsn string) (driver.Conn, error) {
 		return nil, err
 	}
 
-	// _, err = c.decodeAuthResponsePacket()
-	// if err != nil {
-	// 	return nil, err
-	// }
-
-	// 	err = c.writeAuthSwitchPacket(packet)
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
-
 	return c, err
 }
 
