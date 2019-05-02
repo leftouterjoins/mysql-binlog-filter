@@ -6,6 +6,37 @@ import (
 	"crypto/sha256"
 )
 
+const SHA2_REQUEST_PUBLIC_KEY = 0x02
+const SHA2_FAST_AUTH_SUCCESS = 0x03
+const SHA2_PERFORM_FULL_AUTHENTICATION = 0x04
+
+type AuthMoreDataPacket struct {
+	PacketHeader
+	Data string
+}
+
+func (c *Conn) decodeAuthMoreDataResponsePacket(ph PacketHeader) (*AuthMoreDataPacket, error) {
+	md := AuthMoreDataPacket{}
+	md.PacketHeader = ph
+	flag := c.getInt(TypeFixedInt, 1)
+
+	switch flag {
+	case SHA2_FAST_AUTH_SUCCESS:
+		md.Data = "SHA2_FAST_AUTH_SUCCESS"
+	case SHA2_REQUEST_PUBLIC_KEY:
+		md.Data = "SHA2_REQUEST_PUBLIC_KEY"
+	case SHA2_PERFORM_FULL_AUTHENTICATION:
+		md.Data = "SHA2_PERFORM_FULL_AUTHENTICATION"
+	}
+
+	err := c.scanner.Err()
+	if err != nil {
+		return nil, err
+	}
+
+	return &md, nil
+}
+
 type AuthResponsePacket struct {
 	PacketLength   uint64
 	SequenceID     uint64

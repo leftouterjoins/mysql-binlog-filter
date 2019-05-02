@@ -132,7 +132,63 @@ func (d Driver) Open(dsn string) (driver.Conn, error) {
 		return nil, err
 	}
 
+	err = c.listen()
+
 	return c, err
+}
+
+func (c *Conn) listen() error {
+	ph, err := c.getPacketHeader()
+	if err != nil {
+		return err
+	}
+
+	switch ph.Status {
+	case 0x01:
+		p, err := c.decodeAuthMoreDataResponsePacket(ph)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("%+v", p)
+	case 0x00:
+		fmt.Println("OK")
+	case 0xFE:
+		fmt.Println("EOF")
+	case 0xFF:
+		fmt.Println("ERROR")
+	}
+
+	err = c.scanner.Err()
+	if err != nil {
+		return err
+	}
+
+	err = c.listen() // Listen forever until we get an error.
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+type PacketHeader struct {
+	Length     uint64
+	SequenceID uint64
+	Status     uint64
+}
+
+func (c *Conn) getPacketHeader() (PacketHeader, error) {
+	ph := PacketHeader{}
+	ph.Length = c.getInt(TypeFixedInt, 3)
+	ph.SequenceID = c.getInt(TypeFixedInt, 1)
+	ph.Status = c.getInt(TypeFixedInt, 1)
+
+	err := c.scanner.Err()
+	if err != nil {
+		return ph, err
+	}
+
+	return ph, nil
 }
 
 func init() {
