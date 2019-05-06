@@ -4,5 +4,9 @@
   "user": "root",
   "password": "root",
   "database": "information_schema",
-  "ssl": false
+  "ssl": true,
+  "ssl-key": "",
+  "ssl-cer": "",
+  "ssl-ca": "/Users/josh/Sites/Certificates.pem",
+  "verify-cert": false
 }

@@ -2,7 +2,10 @@ package binlog
 
 import (
 	"bytes"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
+	"io/ioutil"
 )
 
 type Capabilities struct {
@@ -83,6 +86,13 @@ type HandshakeResponse struct {
 	KeyValues          map[string]string
 }
 
+type SSLRequest struct {
+	ClientFlag    *Capabilities
+	MaxPacketSize uint64
+	CharacterSet  uint64
+	Username      string
+}
+
 func (c *Conn) decodeCapabilityFlags(hs *Handshake) {
 	var cfb = append(hs.CapabilityFlags1.Bytes(), hs.CapabilityFlags2.Bytes()...)
 	capabilities := c.bitmaskToStruct(cfb, hs.Capabilities).(Capabilities)
@@ -127,8 +137,7 @@ func (c *Conn) decodeHandshakePacket() error {
 }
 
 func (c *Conn) writeHandshakeResponse() error {
-	hr := c.NewHandshakeResponse()
-	c.HandshakeResponse = hr
+	hr := c.HandshakeResponse
 	cf := c.structToBitmask(hr.ClientFlag)
 	c.putBytes(cf)
 	c.putInt(TypeFixedInt, hr.MaxPacketSize, 4)
@@ -161,7 +170,20 @@ func (c *Conn) writeHandshakeResponse() error {
 		c.putNullBytes(1)
 	}
 
-	fmt.Printf("%+v\n", hr)
+	if c.Flush() != nil {
+		return c.Flush()
+	}
+
+	return nil
+}
+
+func (c *Conn) writeSSLRequestPacket() error {
+	sr := c.NewSSLRequest()
+	cf := c.structToBitmask(sr.ClientFlag)
+	c.putBytes(cf)
+	c.putInt(TypeFixedInt, sr.MaxPacketSize, 4)
+	c.putInt(TypeFixedInt, sr.CharacterSet, 1)
+	c.putNullBytes(23)
 
 	if c.Flush() != nil {
 		return c.Flush()
@@ -170,13 +192,22 @@ func (c *Conn) writeHandshakeResponse() error {
 	return nil
 }
 
+func (c *Conn) NewSSLRequest() *SSLRequest {
+	return &SSLRequest{
+		ClientFlag:    c.HandshakeResponse.ClientFlag,
+		MaxPacketSize: c.HandshakeResponse.MaxPacketSize,
+		CharacterSet:  c.HandshakeResponse.CharacterSet,
+		Username:      c.HandshakeResponse.Username,
+	}
+}
+
 func (c *Conn) NewHandshakeResponse() *HandshakeResponse {
 	return &HandshakeResponse{
 		ClientFlag: &Capabilities{
 			LongPassword:               true,
 			FoundRows:                  true,
 			LongFlag:                   false,
-			ConnectWithDB:              true,
+			ConnectWithDB:              false,
 			NoSchema:                   false,
 			Compress:                   false,
 			ODBC:                       false,
@@ -184,7 +215,7 @@ func (c *Conn) NewHandshakeResponse() *HandshakeResponse {
 			IgnoreSpace:                true,
 			Protocol41:                 true,
 			Interactive:                true,
-			SSL:                        false,
+			SSL:                        c.Config.SSL,
 			IgnoreSigpipe:              false,
 			Transactions:               true,
 			LegacyProtocol41:           false,
@@ -196,9 +227,9 @@ func (c *Conn) NewHandshakeResponse() *HandshakeResponse {
 			ConnectAttrs:               false,
 			PluginAuthLenEncClientData: false,
 			CanHandleExpiredPasswords:  false,
-			SessionTrack:               false,
+			SessionTrack:               true,
 			DeprecateEOF:               false,
-			SSLVerifyServerCert:        false,
+			SSLVerifyServerCert:        c.Config.VerifyCert,
 			OptionalResultSetMetadata:  false,
 			RememberOptions:            false,
 		},
@@ -211,4 +242,37 @@ func (c *Conn) NewHandshakeResponse() *HandshakeResponse {
 		ClientPluginName:   c.Handshake.AuthPluginName,
 		KeyValues:          nil,
 	}
+}
+
+// generate TLS config for client side
+// if insecureSkipVerify is set to true, serverName will not be validated
+func NewClientTLSConfig(keyPem string, cerPem string, caPem []byte, insecureSkipVerify bool, serverName string) *tls.Config {
+	fmt.Printf("insecureSkipVerify = %+v\n", insecureSkipVerify)
+	config := &tls.Config{
+		InsecureSkipVerify: !insecureSkipVerify,
+		ServerName:         serverName,
+	}
+
+	if caPem != nil {
+		ca, err := ioutil.ReadFile(string(caPem))
+		if err == nil {
+			pool := x509.NewCertPool()
+			if !pool.AppendCertsFromPEM(ca) {
+				panic("failed to add ca PEM")
+			}
+
+			config.RootCAs = pool
+		}
+	}
+
+	if keyPem != "" && cerPem != "" {
+		cert, err := tls.LoadX509KeyPair(cerPem, keyPem)
+		if err != nil {
+			panic(err)
+		}
+
+		config.Certificates = []tls.Certificate{cert}
+	}
+
+	return config
 }

@@ -3,12 +3,14 @@ package binlog
 import (
 	"bufio"
 	"bytes"
+	"crypto/tls"
 	"database/sql"
 	"database/sql/driver"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"math"
 	"net"
@@ -25,7 +27,7 @@ const TypeLenEncInt = int(3)
 const TypeRestOfPacketString = int(4)
 
 // Integer Maximums
-const MaxUint8 = 1<<8 - 1
+const MaxUint08 = 1<<8 - 1
 const MaxUint16 = 1<<16 - 1
 const MaxUint24 = 1<<24 - 1
 const MaxUint64 = 1<<64 - 1
@@ -41,13 +43,16 @@ type Config struct {
 	Pass       string `json:"password"`
 	Database   string `json:"database"`
 	SSL        bool   `json:"ssl"`
-	VerifyCert bool   `json:"verify_cert"`
+	SSLCA      string `json:"ssl-ca"`
+	SSLCer     string `json:"ssl-cer"`
+	SSLKey     string `json:"ssl-key"`
+	VerifyCert bool   `json:"verify-cert"`
 	Timeout    time.Duration
 }
 
 func splitByBytesFunc(data []byte, atEOF bool) (advance int, token []byte, err error) {
 	if atEOF {
-		return 0, nil, errors.New("scanner found EOF")
+		return 0, nil, io.EOF
 	}
 
 	return 1, data[:1], nil
@@ -69,7 +74,9 @@ func newBinlogConfig(dsn string) (*Config, error) {
 
 type Conn struct {
 	Config            *Config
+	curConn           net.Conn
 	tcpConn           *net.TCPConn
+	secTCPConn        *tls.Conn
 	Handshake         *Handshake
 	HandshakeResponse *HandshakeResponse
 	buffer            *bufio.ReadWriter
@@ -108,9 +115,10 @@ func (d Driver) Open(dsn string) (driver.Conn, error) {
 
 	c := newBinlogConn(config)
 
+	var t interface{}
 	dialer := net.Dialer{Timeout: c.Config.Timeout}
 	addr := fmt.Sprintf("%s:%d", c.Config.Host, c.Config.Port)
-	t, err := dialer.Dial("tcp", addr)
+	t, err = dialer.Dial("tcp", addr)
 
 	if err != nil {
 		netErr, ok := err.(net.Error)
@@ -120,11 +128,33 @@ func (d Driver) Open(dsn string) (driver.Conn, error) {
 		}
 	} else {
 		c.tcpConn = t.(*net.TCPConn)
+		c.setConnection(t.(net.Conn))
 	}
 
 	err = c.decodeHandshakePacket()
 	if err != nil {
 		return nil, err
+	}
+
+	c.HandshakeResponse = c.NewHandshakeResponse()
+
+	// Send SSL_Request Packet
+	if c.Config.SSL {
+		err = c.writeSSLRequestPacket()
+		if err != nil {
+			return nil, err
+		}
+
+		tlsConf := NewClientTLSConfig(
+			c.Config.SSLKey,
+			c.Config.SSLCer,
+			[]byte(c.Config.SSLCA),
+			c.Config.VerifyCert,
+			c.Config.Host,
+		)
+
+		c.secTCPConn = tls.Client(c.tcpConn, tlsConf)
+		c.setConnection(c.secTCPConn)
 	}
 
 	err = c.writeHandshakeResponse()
@@ -138,24 +168,36 @@ func (d Driver) Open(dsn string) (driver.Conn, error) {
 }
 
 func (c *Conn) listen() error {
+	fmt.Println("LISTEN")
 	ph, err := c.getPacketHeader()
+
 	if err != nil {
 		return err
 	}
 
 	switch ph.Status {
 	case 0x01:
-		p, err := c.decodeAuthMoreDataResponsePacket(ph)
+		fmt.Println("IN: AuthMoreDate PACKET")
+		_, err := c.decodeAuthMoreDataResponsePacket(ph)
 		if err != nil {
 			return err
 		}
-		fmt.Printf("%+v", p)
 	case 0x00:
-		fmt.Println("OK")
+		fmt.Println("IN: OK PACKET")
 	case 0xFE:
-		fmt.Println("EOF")
+		fmt.Println("IN: EOF PACKET")
 	case 0xFF:
-		fmt.Println("ERROR")
+		fmt.Println("IN: ERROR PACKET")
+		ep, err := c.decodeErrorPacket(ph)
+		if err != nil {
+			return err
+		}
+
+		err = errors.New(fmt.Sprintf("Error %d: %s", ep.ErrorCode, ep.ErrorMessage))
+		return err
+	default:
+		fmt.Printf("ph = %+v\n", ph)
+		fmt.Println("IN: UNKNOWN PACKET")
 	}
 
 	err = c.scanner.Err()
@@ -196,20 +238,35 @@ func init() {
 }
 
 func (c *Conn) readBytes(l uint64) *bytes.Buffer {
-	if c.buffer == nil {
-		c.buffer = bufio.NewReadWriter(
-			bufio.NewReader(c.tcpConn),
-			bufio.NewWriter(c.tcpConn),
-		)
-
-		c.scanner = bufio.NewScanner(c.buffer.Reader)
-		c.scanner.Split(splitByBytesFunc)
-	}
-
 	b := make([]byte, 0)
 	for i := uint64(0); i < l; i++ {
 		c.scanner.Scan()
 		b = append(b, c.scanner.Bytes()...)
+	}
+
+	return bytes.NewBuffer(b)
+}
+
+func (c *Conn) getBytesUntilEOF() *bytes.Buffer {
+	l := uint64(1)
+	s := c.readBytes(l)
+	b := s.Bytes()
+
+	for true {
+		if uint64(s.Len()) != l || s.Bytes()[0] == NullByte {
+			break
+		}
+
+		s = c.readBytes(uint64(l))
+
+		err := c.scanner.Err()
+		if err == io.EOF {
+			return bytes.NewBuffer(b)
+		} else if err != nil {
+			panic(err)
+		}
+
+		b = append(b, s.Bytes()...)
 	}
 
 	return bytes.NewBuffer(b)
@@ -259,11 +316,18 @@ func (c *Conn) getString(t int, l uint64) string {
 		v = c.decFixedString(l)
 	case TypeNullTerminatedString:
 		v = c.decNullTerminatedString()
+	case TypeRestOfPacketString:
+		v = c.decRestOfPacketString()
 	default:
 		v = ""
 	}
 
 	return v
+}
+
+func (c *Conn) decRestOfPacketString() string {
+	b := c.getBytesUntilEOF()
+	return string(b.Bytes())
 }
 
 func (c *Conn) decNullTerminatedString() string {
@@ -322,11 +386,11 @@ func (c *Conn) encLenEncInt(v uint64) []byte {
 	prefix := make([]byte, 1)
 	var b []byte
 	switch {
-	case v < MaxUint8:
+	case v < MaxUint08:
 		b = make([]byte, 2)
 		binary.LittleEndian.PutUint16(b, uint16(v))
 		b = b[:1]
-	case v >= MaxUint8 && v < MaxUint16:
+	case v >= MaxUint08 && v < MaxUint16:
 		prefix[0] = 0xFC
 		b = make([]byte, 3)
 		binary.LittleEndian.PutUint16(b, uint16(v))
@@ -494,9 +558,20 @@ func (c *Conn) Flush() error {
 
 	c.writeBuf = c.addHeader()
 	_, _ = c.buffer.Write(c.writeBuf.Bytes())
+
+	// log all packets
+	fmt.Printf(
+		"\nOUT:\n%08b\n%x\n%s\n\n",
+		c.writeBuf.Bytes(),
+		c.writeBuf.Bytes(),
+		c.writeBuf.Bytes(),
+	)
+
 	if c.buffer.Flush() != nil {
 		return c.buffer.Flush()
 	}
+
+	c.writeBuf = nil
 
 	return nil
 }
@@ -516,4 +591,40 @@ func (c *Conn) setupWriteBuffer() {
 	if c.writeBuf == nil {
 		c.writeBuf = bytes.NewBuffer(nil)
 	}
+}
+
+type ErrorPacket struct {
+	PacketHeader
+	ErrorCode      uint64
+	ErrorMessage   string
+	SQLStateMarker string
+	SQLState       string
+}
+
+func (c *Conn) decodeErrorPacket(ph PacketHeader) (*ErrorPacket, error) {
+	ep := ErrorPacket{}
+	ep.PacketHeader = ph
+	ep.ErrorCode = c.getInt(TypeFixedInt, 2)
+	ep.SQLStateMarker = c.getString(TypeFixedString, 1)
+	ep.SQLState = c.getString(TypeFixedString, 5)
+	ep.ErrorMessage = c.getString(TypeRestOfPacketString, 0)
+
+	err := c.scanner.Err()
+	if err != nil {
+		return nil, err
+	}
+
+	return &ep, nil
+}
+
+func (c *Conn) setConnection(nc net.Conn) {
+	c.curConn = nc
+
+	c.buffer = bufio.NewReadWriter(
+		bufio.NewReader(c.curConn),
+		bufio.NewWriter(c.curConn),
+	)
+
+	c.scanner = bufio.NewScanner(c.buffer.Reader)
+	c.scanner.Split(splitByBytesFunc)
 }
