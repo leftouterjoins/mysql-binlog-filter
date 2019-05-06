@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/tls"
 	"crypto/x509"
-	"fmt"
 	"io/ioutil"
 )
 
@@ -247,7 +246,6 @@ func (c *Conn) NewHandshakeResponse() *HandshakeResponse {
 // generate TLS config for client side
 // if insecureSkipVerify is set to true, serverName will not be validated
 func NewClientTLSConfig(keyPem string, cerPem string, caPem []byte, insecureSkipVerify bool, serverName string) *tls.Config {
-	fmt.Printf("insecureSkipVerify = %+v\n", insecureSkipVerify)
 	config := &tls.Config{
 		InsecureSkipVerify: !insecureSkipVerify,
 		ServerName:         serverName,

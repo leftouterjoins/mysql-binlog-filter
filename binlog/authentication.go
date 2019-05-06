@@ -12,22 +12,13 @@ const SHA2_PERFORM_FULL_AUTHENTICATION = 0x04
 
 type AuthMoreDataPacket struct {
 	PacketHeader
-	Data string
+	Data uint64
 }
 
 func (c *Conn) decodeAuthMoreDataResponsePacket(ph PacketHeader) (*AuthMoreDataPacket, error) {
 	md := AuthMoreDataPacket{}
 	md.PacketHeader = ph
-	flag := c.getInt(TypeFixedInt, 1)
-
-	switch flag {
-	case SHA2_FAST_AUTH_SUCCESS:
-		md.Data = "SHA2_FAST_AUTH_SUCCESS"
-	case SHA2_REQUEST_PUBLIC_KEY:
-		md.Data = "SHA2_REQUEST_PUBLIC_KEY"
-	case SHA2_PERFORM_FULL_AUTHENTICATION:
-		md.Data = "SHA2_PERFORM_FULL_AUTHENTICATION"
-	}
+	md.Data = c.getInt(TypeFixedInt, 1)
 
 	err := c.scanner.Err()
 	if err != nil {
