@@ -163,6 +163,7 @@ func (c *Conn) listen() error {
 	if err != nil {
 		return err
 	}
+	c.sequenceId++
 
 	switch ph.Status {
 	case 0x01:
@@ -197,6 +198,7 @@ func (c *Conn) listen() error {
 		}
 
 		err = errors.New(fmt.Sprintf("Error %d: %s", ep.ErrorCode, ep.ErrorMessage))
+
 		return err
 	}
 
@@ -556,7 +558,6 @@ func (c *Conn) Flush() error {
 		return c.err
 	}
 
-	fmt.Println(string(c.writeBuf.Bytes()))
 	c.writeBuf = c.addHeader()
 	_, _ = c.buffer.Write(c.writeBuf.Bytes())
 
