@@ -175,7 +175,6 @@ func (c *Conn) listen() error {
 
 	switch ph.Status {
 	case StatusAuth:
-		fmt.Println("IN: AuthMoreDate PACKET")
 		md, err := c.decodeAuthMoreDataResponsePacket(ph)
 		if err != nil {
 			return err
@@ -183,11 +182,8 @@ func (c *Conn) listen() error {
 
 		switch md.Data {
 		case SHA2_FAST_AUTH_SUCCESS:
-			fmt.Println("FAST AUTH")
 		case SHA2_REQUEST_PUBLIC_KEY:
-			fmt.Println("REQUEST PUBLIC KEY")
 		case SHA2_PERFORM_FULL_AUTHENTICATION:
-			fmt.Println("FULL AUTH")
 			c.putBytes(append([]byte(c.Config.Pass), NullByte))
 			if c.Flush() != nil {
 				return c.Flush()
@@ -197,13 +193,11 @@ func (c *Conn) listen() error {
 	case StatusEOF:
 		fallthrough
 	case StatusOK:
-		fmt.Println("IN: OK PACKET")
 		_, err := c.decodeOKPacket(ph)
 		if err != nil {
 			return err
 		}
 	case StatusErr:
-		fmt.Println("IN: ERROR PACKET")
 		ep, err := c.decodeErrorPacket(ph)
 		if err != nil {
 			return err
