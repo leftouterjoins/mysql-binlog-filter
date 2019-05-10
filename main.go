@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+
 	_ "github.com/macinjosh/mysql-binlog-filter/binlog"
 )
 
@@ -14,6 +15,6 @@ func main() {
 
 	err = conn.Ping()
 	if err != nil {
-		fmt.Printf("Ping Error: %+v\n", err)
+		fmt.Printf("%+v\n", err)
 	}
 }

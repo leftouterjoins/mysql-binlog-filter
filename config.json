@@ -8,5 +8,7 @@
   "ssl-key": "",
   "ssl-cer": "",
   "ssl-ca": "/Users/josh/Sites/Certificates.pem",
-  "verify-cert": false
+  "verify-cert": false,
+  "server-id": 2,
+  "binlog-file": "file-one"
 }

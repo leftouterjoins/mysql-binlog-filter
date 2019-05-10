@@ -53,6 +53,8 @@ type Config struct {
 	SSLCer     string `json:"ssl-cer"`
 	SSLKey     string `json:"ssl-key"`
 	VerifyCert bool   `json:"verify-cert"`
+	ServerId   uint64 `json:"server-id"`
+	BinLogFile string `json:"binlog-file"`
 	Timeout    time.Duration
 }
 
@@ -161,64 +163,85 @@ func (d Driver) Open(dsn string) (driver.Conn, error) {
 		return nil, err
 	}
 
-	err = c.listen()
+	r, err := c.listen()
+	switch r.(type) {
+	case *OKPacket: // Login successful.
+		fmt.Println("OK: Init bin log")
+		bldc := &BinLogDumpCommand{
+			Status:   COMMAND_BIN_LOG_DUMP,
+			Position: 0,
+			Flags:    BINLOG_DUMP_NON_BLOCK,
+			ServerId: c.Config.ServerId,
+			Filename: c.Config.BinLogFile,
+		}
+		c.writeBinLogDumpCommand(bldc)
+		_, err := c.listen()
+		if err != nil {
+			return nil, err
+		}
+	case *ErrorPacket: // Bad login.
+	case *AuthMoreDataPacket: // Something's fucked
+		fmt.Println("AuthMoreData")
+	}
 
 	return c, err
 }
 
-func (c *Conn) listen() error {
+func (c *Conn) listen() (interface{}, error) {
 	ph, err := c.getPacketHeader()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	c.sequenceId++
 
+	var res interface{}
+
 	switch ph.Status {
 	case StatusAuth:
-		md, err := c.decodeAuthMoreDataResponsePacket(ph)
+		res, err := c.decodeAuthMoreDataResponsePacket(ph)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
-		switch md.Data {
+		switch res.Data {
 		case SHA2_FAST_AUTH_SUCCESS:
 		case SHA2_REQUEST_PUBLIC_KEY:
 		case SHA2_PERFORM_FULL_AUTHENTICATION:
 			c.putBytes(append([]byte(c.Config.Pass), NullByte))
 			if c.Flush() != nil {
-				return c.Flush()
+				return nil, c.Flush()
 			}
 		}
 
 	case StatusEOF:
 		fallthrough
 	case StatusOK:
-		_, err := c.decodeOKPacket(ph)
+		res, err = c.decodeOKPacket(ph)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	case StatusErr:
-		ep, err := c.decodeErrorPacket(ph)
+		res, err = c.decodeErrorPacket(ph)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
-		err = errors.New(fmt.Sprintf("Error %d: %s", ep.ErrorCode, ep.ErrorMessage))
+		err = errors.New(
+			fmt.Sprintf(
+				"Error %d: %s",
+				res.(*ErrorPacket).ErrorCode,
+				res.(*ErrorPacket).ErrorMessage,
+			))
 
-		return err
+		return res, err
 	}
 
 	err = c.scanner.Err()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	err = c.listen() // Listen forever until we get an error.
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return res, nil
 }
 
 type PacketHeader struct {
@@ -582,15 +605,6 @@ func (c *Conn) Flush() error {
 
 	c.writeBuf = c.addHeader()
 	_, _ = c.buffer.Write(c.writeBuf.Bytes())
-
-	// log all outgoing packets
-	// fmt.Printf(
-	// 	"\nOUT:\n%08b\n%x\n%s\n\n",
-	// 	c.writeBuf.Bytes(),
-	// 	c.writeBuf.Bytes(),
-	// 	c.writeBuf.Bytes(),
-	// )
-
 	if c.buffer.Flush() != nil {
 		return c.buffer.Flush()
 	}
