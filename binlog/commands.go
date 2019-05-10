@@ -1,7 +1,6 @@
 package binlog
 
 const COMMAND_BIN_LOG_DUMP = 0x12
-
 const BINLOG_DUMP_NON_BLOCK = 0x01
 
 type BinLogDumpCommand struct {

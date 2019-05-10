@@ -166,10 +166,10 @@ func (d Driver) Open(dsn string) (driver.Conn, error) {
 	r, err := c.listen()
 	switch r.(type) {
 	case *OKPacket: // Login successful.
-		fmt.Println("OK: Init bin log")
+		c.sequenceId = 0
 		bldc := &BinLogDumpCommand{
 			Status:   COMMAND_BIN_LOG_DUMP,
-			Position: 0,
+			Position: 120,
 			Flags:    BINLOG_DUMP_NON_BLOCK,
 			ServerId: c.Config.ServerId,
 			Filename: c.Config.BinLogFile,
