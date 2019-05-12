@@ -1,7 +1,5 @@
 package binlog
 
-import "fmt"
-
 func (c *Conn) startBinLogStream() error {
 	bldc := &BinLogDumpCommand{
 		Status:   COMMAND_BIN_LOG_DUMP,
@@ -14,6 +12,7 @@ func (c *Conn) startBinLogStream() error {
 	return c.writeBinLogDumpCommand(bldc)
 }
 
+/*
 func (c *Conn) listenForBinlog() error {
 	_, err := c.listen()
 	if err != nil {
@@ -30,3 +29,4 @@ func (c *Conn) listenForBinlog() error {
 
 	return nil
 }
+*/

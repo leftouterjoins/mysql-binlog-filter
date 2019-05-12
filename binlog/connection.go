@@ -8,7 +8,6 @@ import (
 	"database/sql/driver"
 	"encoding/binary"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"math"
