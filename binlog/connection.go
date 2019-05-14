@@ -8,6 +8,7 @@ import (
 	"database/sql/driver"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"math"
@@ -166,7 +167,85 @@ func (d Driver) Open(dsn string) (driver.Conn, error) {
 		return nil, err
 	}
 
+	// Listen for auth response.
+	_, err = c.listen()
+	if err != nil {
+		// Auth failed.
+		return nil, err
+	}
+
+	// Auth completed successfully, move to command phase.
+	c.sequenceId = 0
+
+	// Start binlog stream
+	err = c.startBinLogStream()
+	if err != nil {
+		return nil, err
+	}
+
+	err = c.listenForBinlog()
+	if err != nil {
+		return nil, err
+	}
+
 	return c, err
+}
+
+func (c *Conn) listen() (interface{}, error) {
+	ph, err := c.getPacketHeader()
+	if err != nil {
+		return nil, err
+	}
+	c.sequenceId++
+
+	var res interface{}
+
+	switch ph.Status {
+	case StatusAuth:
+		res, err := c.decodeAuthMoreDataResponsePacket(ph)
+		if err != nil {
+			return nil, err
+		}
+
+		switch res.Data {
+		case SHA2_FAST_AUTH_SUCCESS:
+		case SHA2_REQUEST_PUBLIC_KEY:
+		case SHA2_PERFORM_FULL_AUTHENTICATION:
+			c.putBytes(append([]byte(c.Config.Pass), NullByte))
+			if c.Flush() != nil {
+				return nil, c.Flush()
+			}
+		}
+
+	case StatusEOF:
+		fallthrough
+	case StatusOK:
+		res, err = c.decodeOKPacket(ph)
+		if err != nil {
+			return nil, err
+		}
+	case StatusErr:
+		res, err = c.decodeErrorPacket(ph)
+		if err != nil {
+			return nil, err
+		}
+
+		err = errors.New(
+			fmt.Sprintf(
+				"Error %d: %s",
+				res.(*ErrorPacket).ErrorCode,
+				res.(*ErrorPacket).ErrorMessage,
+			))
+
+		return res, err
+	}
+
+	err = c.scanner.Err()
+	if err != nil {
+		return nil, err
+	}
+
+	return res, nil
 }
 
 type PacketHeader struct {
