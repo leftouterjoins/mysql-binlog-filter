@@ -168,24 +168,30 @@ func (d Driver) Open(dsn string) (driver.Conn, error) {
 	}
 
 	// Listen for auth response.
-	_, err = c.listen()
-	if err != nil {
-		// Auth failed.
-		return nil, err
-	}
+	r, err := c.listen()
+	switch r.(type) {
+	case *OKPacket: // Login successful.
+		// Reset sequence to 0 now that connection phase is over
+		// and command phase has started.
+		c.sequenceId = 0
 
-	// Auth completed successfully, move to command phase.
-	c.sequenceId = 0
+		// Tell server to stream binlog.
+		err = c.startBinLogStream()
+		if err != nil {
+			return nil, err
+		}
 
-	// Start binlog stream
-	err = c.startBinLogStream()
-	if err != nil {
+		err = c.listenForBinlog()
+		if err != nil {
+			return nil, err
+		}
+	case *ErrorPacket: // Bad login.
+		ep := r.(*ErrorPacket)
+		em := fmt.Sprintf("Error %d: %s", ep.ErrorCode, ep.ErrorMessage)
+		err = errors.New(em)
 		return nil, err
-	}
-
-	err = c.listenForBinlog()
-	if err != nil {
-		return nil, err
+	case *AuthMoreDataPacket:
+		panic(errors.New("Unexpected AuthMoreDataPacket"))
 	}
 
 	return c, err

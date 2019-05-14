@@ -3,7 +3,7 @@
   "port": 3316,
   "user": "root",
   "password": "root",
-  "database": "information_schema",
+  "database": "sample",
   "ssl": false,
   "ssl-key": "",
   "ssl-cer": "",

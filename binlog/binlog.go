@@ -21,12 +21,11 @@ func (c *Conn) listenForBinlog() error {
 	}
 
 	fmt.Printf("res = %+v\n", res)
-	fmt.Println("hello")
-	err = c.listenForBinlog()
-	fmt.Println("test")
-	if err != nil {
-		return err
-	}
+
+	// err = c.listenForBinlog()
+	// if err != nil {
+	// 	return err
+	// }
 
 	return nil
 }
