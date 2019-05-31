@@ -2,3 +2,4 @@
 server-id = 1
 log_bin = /tmp/mysql-bin.log
 binlog_checksum = NONE
+binlog_format = ROW
