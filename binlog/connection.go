@@ -8,7 +8,6 @@ import (
 	"database/sql/driver"
 	"encoding/binary"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"math"
@@ -196,7 +195,7 @@ func (d Driver) Open(dsn string) (driver.Conn, error) {
 		return nil, err
 	}
 
-	_, err = c.readPacket()
+	err = c.listenForBinlog()
 	if err != nil {
 		return nil, err
 	}
@@ -268,11 +267,6 @@ func (c *Conn) getPacketHeader() (*PacketHeader, error) {
 	ph := PacketHeader{}
 	ph.Length = c.getInt(TypeFixedInt, 3)
 
-	if ph.Length == 0 {
-		err := errors.New("EOF")
-		return nil, err
-	}
-
 	ph.SequenceID = c.getInt(TypeFixedInt, 1)
 	ph.Status = c.getInt(TypeFixedInt, 1)
 
@@ -297,14 +291,12 @@ func (c *Conn) readBytes(l uint64) *bytes.Buffer {
 		didScan := c.scanner.Scan()
 		if !didScan {
 			err := c.scanner.Err()
-			if err == nil { // scanner reached EOF
-				return EOF
-			} else {
-				panic(err) // @TODO Handle this gracefully.
+			if err != nil {
+				panic(err)
 			}
+		} else {
+			b = append(b, c.scanner.Bytes()...)
 		}
-
-		b = append(b, c.scanner.Bytes()...)
 	}
 
 	c.scanPos += uint64(len(b))

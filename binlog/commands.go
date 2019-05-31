@@ -1,6 +1,6 @@
 package binlog
 
-const BINLOG_DUMP_NON_BLOCK = 0x01
+const BINLOG_DUMP_NON_BLOCK = 0x00
 const COMMAND_BIN_LOG_DUMP = 0x12
 const COMMAND_REGISTER_SLAVE = 0x15
 

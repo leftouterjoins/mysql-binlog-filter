@@ -35,16 +35,10 @@ func (c *Conn) listenForBinlog() error {
 	for {
 		p, err := c.readPacket()
 		if err != nil {
-			if err.Error() == "EOF" {
-				continue
-			} else {
-				return err
-			}
+			return err
 		} else {
 			kp := p.(*OKPacket)
 			fmt.Printf("kp = %+v\n", kp)
 		}
 	}
-
-	return nil
 }
