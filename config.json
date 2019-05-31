@@ -9,6 +9,6 @@
   "ssl-cer": "",
   "ssl-ca": "/Users/josh/Sites/Certificates.pem",
   "verify-cert": false,
-  "server-id": 1,
+  "server-id": 2,
   "binlog-file": "mysql-bin.000004"
 }

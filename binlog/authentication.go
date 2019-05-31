@@ -11,11 +11,11 @@ const SHA2_FAST_AUTH_SUCCESS = 0x03
 const SHA2_PERFORM_FULL_AUTHENTICATION = 0x04
 
 type AuthMoreDataPacket struct {
-	PacketHeader
+	*PacketHeader
 	Data uint64
 }
 
-func (c *Conn) decodeAuthMoreDataResponsePacket(ph PacketHeader) (*AuthMoreDataPacket, error) {
+func (c *Conn) decodeAuthMoreDataResponsePacket(ph *PacketHeader) (*AuthMoreDataPacket, error) {
 	md := AuthMoreDataPacket{}
 	md.PacketHeader = ph
 	md.Data = c.getInt(TypeFixedInt, 1)
