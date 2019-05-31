@@ -87,7 +87,7 @@ type Conn struct {
 	err               error
 	sequenceId        uint64
 	writeBuf          *bytes.Buffer
-	StausFlags        *StatusFlags
+	StatusFlags       *StatusFlags
 	Listener          *net.Listener
 	packetHeader      *PacketHeader
 	scanPos           uint64
@@ -533,6 +533,8 @@ func (c *Conn) putString(t int, v string) uint64 {
 	switch t {
 	case TypeFixedString:
 		b = c.encFixedString(v)
+	case TypeLenEncString:
+		b = c.encLenEncString(v)
 	case TypeNullTerminatedString:
 		b = c.encNullTerminatedString(v)
 	case TypeRestOfPacketString:
@@ -545,6 +547,12 @@ func (c *Conn) putString(t int, v string) uint64 {
 	}
 
 	return uint64(l)
+}
+
+func (c *Conn) encLenEncString(v string) []byte {
+	l := uint64(len(v))
+	b := c.encLenEncInt(l)
+	return append(b, c.encFixedString(v)...)
 }
 
 func (c *Conn) encNullTerminatedString(v string) []byte {
