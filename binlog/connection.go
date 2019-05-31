@@ -184,6 +184,18 @@ func (d Driver) Open(dsn string) (driver.Conn, error) {
 		return nil, err
 	}
 
+	c.sequenceId = 0
+
+	_, err = c.readPacket()
+	if err != nil {
+		return nil, err
+	}
+
+	err = c.startBinlogStream()
+	if err != nil {
+		return nil, err
+	}
+
 	_, err = c.readPacket()
 	if err != nil {
 		return nil, err
@@ -197,8 +209,6 @@ func (c *Conn) readPacket() (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	c.sequenceId++
 
 	var res interface{}
 
@@ -617,6 +627,7 @@ func (c *Conn) Flush() error {
 	}
 
 	c.writeBuf = c.addHeader()
+	//fmt.Printf("c.writeBuf = %x\n", c.writeBuf.Bytes())
 	_, _ = c.buffer.Write(c.writeBuf.Bytes())
 	if c.buffer.Flush() != nil {
 		return c.buffer.Flush()

@@ -21,9 +21,9 @@ func (c *Conn) writeBinlogRegisterSlaveCommand(brsc *BinlogRegisterSlaveCommand)
 	c.putString(TypeLenEncString, brsc.Hostname)
 	c.putString(TypeLenEncString, brsc.User)
 	c.putString(TypeLenEncString, brsc.Password)
-	c.putInt(TypeLenEncInt, brsc.Port, 2)
-	c.putInt(TypeLenEncInt, brsc.ReplRank, 4)
-	c.putInt(TypeLenEncInt, brsc.MasterId, 4)
+	c.putInt(TypeFixedInt, brsc.Port, 2)
+	c.putInt(TypeFixedInt, brsc.ReplRank, 4)
+	c.putInt(TypeFixedInt, brsc.MasterId, 4)
 
 	if c.Flush() != nil {
 		return c.Flush()

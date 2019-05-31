@@ -12,7 +12,7 @@ func (c *Conn) registerAsSlave() error {
 		User:     "",
 		Password: "",
 		Port:     0,
-		ReplRank: 1,
+		ReplRank: 0,
 		MasterId: 0,
 	}
 
