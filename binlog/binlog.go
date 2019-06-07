@@ -1,8 +1,6 @@
 package binlog
 
-import (
-	"fmt"
-)
+import "fmt"
 
 func (c *Conn) registerAsSlave() error {
 	brsc := &BinlogRegisterSlaveCommand{
@@ -34,11 +32,28 @@ func (c *Conn) startBinlogStream() error {
 func (c *Conn) listenForBinlog() error {
 	for {
 		p, err := c.readPacket()
-		if err != nil {
+		fmt.Printf("p = %+v\n", p)
+		fmt.Printf("err = %+v\n", err)
+		if err != nil || p == nil {
 			return err
 		} else {
 			kp := p.(*OKPacket)
-			fmt.Printf("kp = %+v\n", kp)
+			c.getEventHeader(kp)
 		}
 	}
+}
+
+func (c *Conn) getEventHeader(p *OKPacket) {
+	/*
+		4              timestamp
+		1              event type
+		4              server-id
+		4              event-size
+		   if binlog-version > 1:
+		4              log pos
+		2              flags
+	*/
+
+	_ = c.getInt(TypeFixedInt, 4)
+
 }

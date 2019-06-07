@@ -1,8 +1,9 @@
 package binlog
 
-const BINLOG_DUMP_NON_BLOCK = 0x00
-const COMMAND_BIN_LOG_DUMP = 0x12
+const BINLOG_DUMP_NON_BLOCK = 0x00 // Set to 0 because we do want the binlog to block.
+
 const COMMAND_REGISTER_SLAVE = 0x15
+const COMMAND_BIN_LOG_DUMP = 0x12
 
 type BinlogRegisterSlaveCommand struct {
 	Status   uint64

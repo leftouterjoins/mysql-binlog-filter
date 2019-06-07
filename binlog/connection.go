@@ -247,6 +247,8 @@ func (c *Conn) readPacket() (interface{}, error) {
 		)
 
 		return res, err
+	default:
+		fmt.Printf("Unknown PacketHeader: %+v\n", ph)
 	}
 
 	err = c.scanner.Err()
@@ -269,6 +271,7 @@ func (c *Conn) getPacketHeader() (*PacketHeader, error) {
 
 	ph.SequenceID = c.getInt(TypeFixedInt, 1)
 	ph.Status = c.getInt(TypeFixedInt, 1)
+	fmt.Printf("ph.Status = %+v\n", ph.Status)
 
 	err := c.scanner.Err()
 	if err != nil {
