@@ -3,8 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
-
-	_ "github.com/macinjosh/mysql-binlog-filter/binlog"
+	_ "github.com/joshwbrick/mysql-binlog-filter/binlog"
 )
 
 func main() {

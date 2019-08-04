@@ -20,8 +20,6 @@ import (
 // Misc. Constants
 const NullByte byte = 0
 
-var EOF = bytes.NewBuffer([]byte{NullByte})
-
 const MaxPacketSize = MaxUint16
 
 // MySQL Packet Data Types
@@ -219,9 +217,9 @@ func (c *Conn) readPacket() (interface{}, error) {
 		}
 
 		switch res.Data {
-		case SHA2_FAST_AUTH_SUCCESS:
-		case SHA2_REQUEST_PUBLIC_KEY:
-		case SHA2_PERFORM_FULL_AUTHENTICATION:
+		case Sha2FastAuthSuccess:
+		case Sha2RequestPublicKey:
+		case Sha2PerformFullAuthentication:
 			c.putBytes(append([]byte(c.Config.Pass), NullByte))
 			if c.Flush() != nil {
 				return nil, c.Flush()
@@ -241,7 +239,7 @@ func (c *Conn) readPacket() (interface{}, error) {
 		}
 
 		err = fmt.Errorf(
-			"Error %d: %s",
+			"error %d: %s",
 			res.(*ErrorPacket).ErrorCode,
 			res.(*ErrorPacket).ErrorMessage,
 		)
@@ -317,7 +315,7 @@ func (c *Conn) getBytesUntilNull() *bytes.Buffer {
 			break
 		}
 
-		s = c.readBytes(uint64(l))
+		s = c.readBytes(l)
 		b = append(b, s.Bytes()...)
 	}
 
@@ -460,7 +458,7 @@ func (c *Conn) encLenEncInt(v uint64) []byte {
 	case v >= MaxUint24 && v < MaxUint64:
 		prefix[0] = 0xFE
 		b = make([]byte, 9)
-		binary.LittleEndian.PutUint64(b, uint64(v))
+		binary.LittleEndian.PutUint64(b, v)
 	}
 
 	if len(b) > 1 {
@@ -635,12 +633,11 @@ func (c *Conn) Flush() error {
 
 func (c *Conn) addHeader() *bytes.Buffer {
 	pl := uint64(c.writeBuf.Len())
-	sId := uint64(c.sequenceId)
+	sId := c.sequenceId
 	c.sequenceId++
 
-	plB := c.encFixedLenInt(pl, 3)
-	sIdB := c.encFixedLenInt(sId, 1)
-
+	var plB = c.encFixedLenInt(pl, 3)
+	var sIdB = c.encFixedLenInt(sId, 1)
 	return bytes.NewBuffer(append(append(plB, sIdB...), c.writeBuf.Bytes()...))
 }
 

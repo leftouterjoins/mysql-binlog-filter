@@ -6,9 +6,9 @@ import (
 	"crypto/sha256"
 )
 
-const SHA2_REQUEST_PUBLIC_KEY = 0x02
-const SHA2_FAST_AUTH_SUCCESS = 0x03
-const SHA2_PERFORM_FULL_AUTHENTICATION = 0x04
+const Sha2RequestPublicKey = 0x02
+const Sha2FastAuthSuccess = 0x03
+const Sha2PerformFullAuthentication = 0x04
 
 type AuthMoreDataPacket struct {
 	*PacketHeader

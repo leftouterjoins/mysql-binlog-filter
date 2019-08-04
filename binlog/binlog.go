@@ -3,8 +3,8 @@ package binlog
 import "fmt"
 
 func (c *Conn) registerAsSlave() error {
-	brsc := &BinlogRegisterSlaveCommand{
-		Status:   COMMAND_REGISTER_SLAVE,
+	brsc := &RegisterSlaveCommand{
+		Status:   CommandRegisterSlave,
 		ServerId: c.Config.ServerId,
 		Hostname: "",
 		User:     "",
@@ -18,10 +18,10 @@ func (c *Conn) registerAsSlave() error {
 }
 
 func (c *Conn) startBinlogStream() error {
-	bldc := &BinlogDumpCommand{
-		Status:   COMMAND_BIN_LOG_DUMP,
+	bldc := &DumpCommand{
+		Status:   CommandBinLogDump,
 		Position: 120,
-		Flags:    BINLOG_DUMP_NON_BLOCK,
+		Flags:    DumpNonBlock,
 		ServerId: c.Config.ServerId,
 		Filename: c.Config.BinlogFile,
 	}

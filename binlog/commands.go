@@ -1,11 +1,11 @@
 package binlog
 
-const BINLOG_DUMP_NON_BLOCK = 0x00 // Set to 0 because we do want the binlog to block.
+const DumpNonBlock = 0x00 // Set to 0 because we do want the binlog to block.
 
-const COMMAND_REGISTER_SLAVE = 0x15
-const COMMAND_BIN_LOG_DUMP = 0x12
+const CommandRegisterSlave = 0x15
+const CommandBinLogDump = 0x12
 
-type BinlogRegisterSlaveCommand struct {
+type RegisterSlaveCommand struct {
 	Status   uint64
 	ServerId uint64
 	Hostname string // Length Encoded
@@ -16,7 +16,7 @@ type BinlogRegisterSlaveCommand struct {
 	MasterId uint64
 }
 
-func (c *Conn) writeBinlogRegisterSlaveCommand(brsc *BinlogRegisterSlaveCommand) error {
+func (c *Conn) writeBinlogRegisterSlaveCommand(brsc *RegisterSlaveCommand) error {
 	c.putInt(TypeFixedInt, brsc.Status, 1)
 	c.putInt(TypeFixedInt, brsc.ServerId, 4)
 	c.putString(TypeLenEncString, brsc.Hostname)
@@ -33,7 +33,7 @@ func (c *Conn) writeBinlogRegisterSlaveCommand(brsc *BinlogRegisterSlaveCommand)
 	return nil
 }
 
-type BinlogDumpCommand struct {
+type DumpCommand struct {
 	Status   uint64
 	Position uint64
 	Flags    uint64
@@ -41,7 +41,7 @@ type BinlogDumpCommand struct {
 	Filename string
 }
 
-func (c *Conn) writeBinlogDumpCommand(bldc *BinlogDumpCommand) error {
+func (c *Conn) writeBinlogDumpCommand(bldc *DumpCommand) error {
 	c.putInt(TypeFixedInt, bldc.Status, 1)
 	c.putInt(TypeFixedInt, bldc.Position, 4)
 	c.putInt(TypeFixedInt, bldc.Flags, 2)
