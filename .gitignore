@@ -2,5 +2,3 @@ tags
 .idea
 .DS_Store
 mysql-binlog-filter
-
-!.idea
