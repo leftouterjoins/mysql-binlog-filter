@@ -1,4 +1,4 @@
 tags
-.idea
+.vscode
 .DS_Store
 mysql-binlog-filter

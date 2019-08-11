@@ -36,10 +36,10 @@ func (c *Conn) listenForBinlog() error {
 		fmt.Printf("err = %+v\n", err)
 		if err != nil || p == nil {
 			return err
-		} else {
-			kp := p.(*OKPacket)
-			c.getEventHeader(kp)
 		}
+
+		kp := p.(*OKPacket)
+		c.getEventHeader(kp)
 	}
 }
 
@@ -55,5 +55,4 @@ func (c *Conn) getEventHeader(p *OKPacket) {
 	*/
 
 	_ = c.getInt(TypeFixedInt, 4)
-
 }
