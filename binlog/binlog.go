@@ -5,7 +5,7 @@ import "fmt"
 func (c *Conn) registerAsSlave() error {
 	brsc := &RegisterSlaveCommand{
 		Status:   CommandRegisterSlave,
-		ServerId: c.Config.ServerId,
+		ServerId: c.Config.ServerID,
 		Hostname: "",
 		User:     "",
 		Password: "",
@@ -22,7 +22,7 @@ func (c *Conn) startBinlogStream() error {
 		Status:   CommandBinLogDump,
 		Position: 120,
 		Flags:    DumpNonBlock,
-		ServerId: c.Config.ServerId,
+		ServerId: c.Config.ServerID,
 		Filename: c.Config.BinlogFile,
 	}
 

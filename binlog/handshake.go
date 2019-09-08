@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 )
 
+// Capabilities is
 type Capabilities struct {
 	LongPassword               bool
 	FoundRows                  bool
@@ -38,6 +39,7 @@ type Capabilities struct {
 	RememberOptions            bool
 }
 
+// Status is
 type Status struct {
 	InTrans              bool
 	Autocommit           bool
@@ -55,6 +57,7 @@ type Status struct {
 	SessionStateChanged  bool
 }
 
+// Handshake is
 type Handshake struct {
 	PacketLength         uint64
 	SequenceID           uint64
@@ -73,6 +76,7 @@ type Handshake struct {
 	Status               *Status
 }
 
+// HandshakeResponse is
 type HandshakeResponse struct {
 	ClientFlag         *Capabilities
 	MaxPacketSize      uint64
@@ -85,6 +89,7 @@ type HandshakeResponse struct {
 	KeyValues          map[string]string
 }
 
+// SSLRequest is
 type SSLRequest struct {
 	ClientFlag    *Capabilities
 	MaxPacketSize uint64
@@ -191,6 +196,7 @@ func (c *Conn) writeSSLRequestPacket() error {
 	return nil
 }
 
+// NewSSLRequest is
 func (c *Conn) NewSSLRequest() *SSLRequest {
 	return &SSLRequest{
 		ClientFlag:    c.HandshakeResponse.ClientFlag,
@@ -200,6 +206,7 @@ func (c *Conn) NewSSLRequest() *SSLRequest {
 	}
 }
 
+// NewHandshakeResponse is
 func (c *Conn) NewHandshakeResponse() *HandshakeResponse {
 	return &HandshakeResponse{
 		ClientFlag: &Capabilities{
@@ -243,8 +250,7 @@ func (c *Conn) NewHandshakeResponse() *HandshakeResponse {
 	}
 }
 
-// generate TLS config for client side
-// if insecureSkipVerify is set to true, serverName will not be validated
+// NewClientTLSConfig generates TLS config for client side if insecureSkipVerify is set to true, serverName will not be validated
 func NewClientTLSConfig(keyPem string, cerPem string, caPem []byte, insecureSkipVerify bool, serverName string) *tls.Config {
 	config := &tls.Config{
 		InsecureSkipVerify: !insecureSkipVerify,

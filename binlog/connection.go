@@ -17,31 +17,55 @@ import (
 	"time"
 )
 
-// Misc. Constants
+// NullByte is a constant representing a null byte in the MySQL protocol.
 const NullByte byte = 0
 
+// MaxPacketSize is the maximum size of a MySQL protocol packet.
 const MaxPacketSize = MaxUint16
 
-// MySQL Packet Data Types
+// TypeNullTerminatedString is
 const TypeNullTerminatedString = int(0)
+
+// TypeFixedString is
 const TypeFixedString = int(1)
+
+// TypeFixedInt is
 const TypeFixedInt = int(2)
+
+// TypeLenEncInt is
 const TypeLenEncInt = int(3)
+
+// TypeRestOfPacketString is
 const TypeRestOfPacketString = int(4)
+
+// TypeLenEncString is
 const TypeLenEncString = int(5)
 
-// Integer Maximums
+// MaxUint08 is
 const MaxUint08 = 1<<8 - 1
+
+// MaxUint16 is
 const MaxUint16 = 1<<16 - 1
+
+// MaxUint24 is
 const MaxUint24 = 1<<24 - 1
+
+// MaxUint64 is
 const MaxUint64 = 1<<64 - 1
 
-// Packet Statuses
+// StatusOK is
 const StatusOK = 0x00
+
+// StatusEOF is
 const StatusEOF = 0xFE
+
+// StatusErr is
 const StatusErr = 0xFF
+
+// StatusAuth is
 const StatusAuth = 0x01
 
+// Config is
 type Config struct {
 	Host       string `json:"host"`
 	Port       int    `json:"port"`
@@ -53,7 +77,7 @@ type Config struct {
 	SSLCer     string `json:"ssl-cer"`
 	SSLKey     string `json:"ssl-key"`
 	VerifyCert bool   `json:"verify-cert"`
-	ServerId   uint64 `json:"server-id"`
+	ServerID   uint64 `json:"server-id"`
 	BinlogFile string `json:"binlog-file"`
 	Timeout    time.Duration
 }
@@ -72,6 +96,7 @@ func newBinlogConfig(dsn string) (*Config, error) {
 	return &config, err
 }
 
+// Conn is
 type Conn struct {
 	Config            *Config
 	curConn           net.Conn
@@ -82,7 +107,7 @@ type Conn struct {
 	buffer            *bufio.ReadWriter
 	scanner           *bufio.Scanner
 	err               error
-	sequenceId        uint64
+	sequenceID        uint64
 	writeBuf          *bytes.Buffer
 	StatusFlags       *StatusFlags
 	Listener          *net.Listener
@@ -93,24 +118,29 @@ type Conn struct {
 func newBinlogConn(config *Config) Conn {
 	return Conn{
 		Config:     config,
-		sequenceId: 1,
+		sequenceID: 1,
 	}
 }
 
+// Prepare is
 func (c Conn) Prepare(query string) (driver.Stmt, error) {
 	return nil, nil
 }
 
+// Close is
 func (c Conn) Close() error {
 	return nil
 }
 
+// Begin is
 func (c Conn) Begin() (driver.Tx, error) {
 	return nil, nil
 }
 
+// Driver is
 type Driver struct{}
 
+// Open is
 func (d Driver) Open(dsn string) (driver.Conn, error) {
 	config, err := newBinlogConfig(dsn)
 	if nil != err {
@@ -173,7 +203,7 @@ func (d Driver) Open(dsn string) (driver.Conn, error) {
 	}
 
 	// Auth was successful.
-	c.sequenceId = 0
+	c.sequenceID = 0
 
 	// Register as a slave
 	err = c.registerAsSlave()
@@ -181,7 +211,7 @@ func (d Driver) Open(dsn string) (driver.Conn, error) {
 		return nil, err
 	}
 
-	c.sequenceId = 0
+	c.sequenceID = 0
 
 	_, err = c.readPacket()
 	if err != nil {
@@ -257,6 +287,7 @@ func (c *Conn) readPacket() (interface{}, error) {
 	return res, nil
 }
 
+// PacketHeader is
 type PacketHeader struct {
 	Length     uint64
 	SequenceID uint64
@@ -389,9 +420,9 @@ func (c *Conn) decLenEncInt() uint64 {
 	_ = binary.Read(br, binary.LittleEndian, &l)
 	if l > 0 {
 		return c.decFixedInt(uint64(l))
-	} else {
-		return 0
 	}
+
+	return 0
 }
 
 func (c *Conn) decFixedInt(l uint64) uint64 {
@@ -614,6 +645,7 @@ func (c *Conn) putBytes(v []byte) uint64 {
 	return uint64(l)
 }
 
+// Flush is
 func (c *Conn) Flush() error {
 	if c.err != nil {
 		return c.err
@@ -633,12 +665,12 @@ func (c *Conn) Flush() error {
 
 func (c *Conn) addHeader() *bytes.Buffer {
 	pl := uint64(c.writeBuf.Len())
-	sId := c.sequenceId
-	c.sequenceId++
+	sID := c.sequenceID
+	c.sequenceID++
 
 	var plB = c.encFixedLenInt(pl, 3)
-	var sIdB = c.encFixedLenInt(sId, 1)
-	return bytes.NewBuffer(append(append(plB, sIdB...), c.writeBuf.Bytes()...))
+	var sIDB = c.encFixedLenInt(sID, 1)
+	return bytes.NewBuffer(append(append(plB, sIDB...), c.writeBuf.Bytes()...))
 }
 
 func (c *Conn) setupWriteBuffer() {
@@ -647,9 +679,11 @@ func (c *Conn) setupWriteBuffer() {
 	}
 }
 
+// StatusFlags is not used
 type StatusFlags struct {
 }
 
+// OKPacket is
 type OKPacket struct {
 	*PacketHeader
 	Header           uint64
@@ -683,6 +717,7 @@ func (c *Conn) decodeOKPacket(ph *PacketHeader) (*OKPacket, error) {
 	return &op, nil
 }
 
+// ErrorPacket is
 type ErrorPacket struct {
 	*PacketHeader
 	ErrorCode      uint64

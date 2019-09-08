@@ -6,10 +6,16 @@ import (
 	"crypto/sha256"
 )
 
+// Sha2RequestPublicKey is a constant in the MySQL Protocol.
 const Sha2RequestPublicKey = 0x02
+
+// Sha2FastAuthSuccess is a constant in the MySQL Protocol.
 const Sha2FastAuthSuccess = 0x03
+
+// Sha2PerformFullAuthentication is a constant in the MySQL protocol.
 const Sha2PerformFullAuthentication = 0x04
 
+// AuthMoreDataPacket represnts a MySQL auth-more packet.
 type AuthMoreDataPacket struct {
 	*PacketHeader
 	Data uint64
@@ -28,6 +34,7 @@ func (c *Conn) decodeAuthMoreDataResponsePacket(ph *PacketHeader) (*AuthMoreData
 	return &md, nil
 }
 
+// AuthResponsePacket represents a MySQL authentication response packet.
 type AuthResponsePacket struct {
 	PacketLength   uint64
 	SequenceID     uint64
