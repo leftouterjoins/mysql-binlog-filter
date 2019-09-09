@@ -7,7 +7,7 @@ import (
 	"io/ioutil"
 )
 
-// Capabilities is
+// Capabilities represents a MySQL protocol bit array for communicating the capabilities of the server or client.
 type Capabilities struct {
 	LongPassword               bool
 	FoundRows                  bool
@@ -39,7 +39,7 @@ type Capabilities struct {
 	RememberOptions            bool
 }
 
-// Status is
+// Status represents a bit array data structure from the MySQL protocol that indicates the server status.
 type Status struct {
 	InTrans              bool
 	Autocommit           bool
@@ -57,7 +57,7 @@ type Status struct {
 	SessionStateChanged  bool
 }
 
-// Handshake is
+// Handshake represents the Handshake packet from the MySQL protocol.
 type Handshake struct {
 	PacketLength         uint64
 	SequenceID           uint64
@@ -76,7 +76,7 @@ type Handshake struct {
 	Status               *Status
 }
 
-// HandshakeResponse is
+// HandshakeResponse represents the Handshake Response packet from the MySQL protocol.
 type HandshakeResponse struct {
 	ClientFlag         *Capabilities
 	MaxPacketSize      uint64
@@ -89,7 +89,7 @@ type HandshakeResponse struct {
 	KeyValues          map[string]string
 }
 
-// SSLRequest is
+// SSLRequest represents the SSL Request packet from the MySQL protocol.
 type SSLRequest struct {
 	ClientFlag    *Capabilities
 	MaxPacketSize uint64
@@ -196,7 +196,7 @@ func (c *Conn) writeSSLRequestPacket() error {
 	return nil
 }
 
-// NewSSLRequest is
+// NewSSLRequest creates a new SSL Request packet using information from the handshake response.
 func (c *Conn) NewSSLRequest() *SSLRequest {
 	return &SSLRequest{
 		ClientFlag:    c.HandshakeResponse.ClientFlag,
@@ -206,7 +206,7 @@ func (c *Conn) NewSSLRequest() *SSLRequest {
 	}
 }
 
-// NewHandshakeResponse is
+// NewHandshakeResponse creates the default handshake response packet.
 func (c *Conn) NewHandshakeResponse() *HandshakeResponse {
 	return &HandshakeResponse{
 		ClientFlag: &Capabilities{

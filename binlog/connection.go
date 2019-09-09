@@ -23,49 +23,49 @@ const NullByte byte = 0
 // MaxPacketSize is the maximum size of a MySQL protocol packet.
 const MaxPacketSize = MaxUint16
 
-// TypeNullTerminatedString is
+// TypeNullTerminatedString represents the null terminated string type in the MySQL protocol.
 const TypeNullTerminatedString = int(0)
 
-// TypeFixedString is
+// TypeFixedString represents the fixed string type in the MySQL protocol.
 const TypeFixedString = int(1)
 
-// TypeFixedInt is
+// TypeFixedInt represents the fixed integer type in the MySQL protocol.
 const TypeFixedInt = int(2)
 
-// TypeLenEncInt is
+// TypeLenEncInt represents the length encoded integer type in the MySQL protocol.
 const TypeLenEncInt = int(3)
 
-// TypeRestOfPacketString is
+// TypeRestOfPacketString represents the rest of packet string type in the MySQL protocol.
 const TypeRestOfPacketString = int(4)
 
-// TypeLenEncString is
+// TypeLenEncString represents the length encoded string type in the MySQL protocol.
 const TypeLenEncString = int(5)
 
-// MaxUint08 is
+// MaxUint08 is the largest unsigned eight byte integer.
 const MaxUint08 = 1<<8 - 1
 
-// MaxUint16 is
+// MaxUint16 is is the largest unsigned sixteen byte integer.
 const MaxUint16 = 1<<16 - 1
 
-// MaxUint24 is
+// MaxUint24 is is the largest unsigned 24 byte integer.
 const MaxUint24 = 1<<24 - 1
 
-// MaxUint64 is
+// MaxUint64 is is the largest unsigned 64 byte integer.
 const MaxUint64 = 1<<64 - 1
 
-// StatusOK is
+// StatusOK indicates an OK packet from the MySQL protocol.
 const StatusOK = 0x00
 
-// StatusEOF is
+// StatusEOF indicates an end of file packet from the MySQL protocol.
 const StatusEOF = 0xFE
 
-// StatusErr is
+// StatusErr indicates an error packet from the MySQL protocol.
 const StatusErr = 0xFF
 
-// StatusAuth is
+// StatusAuth indicates an authorization packet from the MySQL protocol.
 const StatusAuth = 0x01
 
-// Config is
+// Config represents the required parameters required to make a MySQL connection.
 type Config struct {
 	Host       string `json:"host"`
 	Port       int    `json:"port"`
@@ -96,7 +96,7 @@ func newBinlogConfig(dsn string) (*Config, error) {
 	return &config, err
 }
 
-// Conn is
+// Conn represents a connection to a MySQL server.
 type Conn struct {
 	Config            *Config
 	curConn           net.Conn
@@ -122,25 +122,25 @@ func newBinlogConn(config *Config) Conn {
 	}
 }
 
-// Prepare is
+// Prepare is not yet implemented.
 func (c Conn) Prepare(query string) (driver.Stmt, error) {
 	return nil, nil
 }
 
-// Close is
+// Close is not yet implemented.s
 func (c Conn) Close() error {
 	return nil
 }
 
-// Begin is
+// Begin is not yet implemented.
 func (c Conn) Begin() (driver.Tx, error) {
 	return nil, nil
 }
 
-// Driver is
+// Driver is not used.
 type Driver struct{}
 
-// Open is
+// Open creates the connection to the MySQL server.
 func (d Driver) Open(dsn string) (driver.Conn, error) {
 	config, err := newBinlogConfig(dsn)
 	if nil != err {
@@ -287,7 +287,7 @@ func (c *Conn) readPacket() (interface{}, error) {
 	return res, nil
 }
 
-// PacketHeader is
+// PacketHeader represents the beginning of a MySQL protocol packet.
 type PacketHeader struct {
 	Length     uint64
 	SequenceID uint64
@@ -645,7 +645,7 @@ func (c *Conn) putBytes(v []byte) uint64 {
 	return uint64(l)
 }
 
-// Flush is
+// Flush clears the write buffer.
 func (c *Conn) Flush() error {
 	if c.err != nil {
 		return c.err
@@ -683,7 +683,7 @@ func (c *Conn) setupWriteBuffer() {
 type StatusFlags struct {
 }
 
-// OKPacket is
+// OKPacket represents an OK packet in the MySQL protocol.
 type OKPacket struct {
 	*PacketHeader
 	Header           uint64
@@ -717,7 +717,7 @@ func (c *Conn) decodeOKPacket(ph *PacketHeader) (*OKPacket, error) {
 	return &op, nil
 }
 
-// ErrorPacket is
+// ErrorPacket represents an error packet in the MySQL protocol.
 type ErrorPacket struct {
 	*PacketHeader
 	ErrorCode      uint64
